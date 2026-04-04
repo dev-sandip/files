@@ -5,6 +5,7 @@ import {
   deleteFileAction,
   deleteFolderAction,
   listStorageAction,
+  renameFolderAction,
 } from "@/lib/actions/storage";
 import { generateInvitePhraseAction } from "@/lib/actions/invite";
 import { authClient } from "@/lib/auth-client";
@@ -19,6 +20,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FilePreviewPanel } from "@/components/files/file-preview-panel";
@@ -29,6 +38,7 @@ import {
   Folder,
   Loader2,
   LogOut,
+  Pencil,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -73,6 +83,8 @@ export function FileLibrary({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewFile, setPreviewFile] = useState<FileRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [renameTarget, setRenameTarget] = useState<FolderRow | null>(null);
+  const [renameInput, setRenameInput] = useState("");
   const { data: sessionData } = authClient.useSession();
   const liveUser = sessionData?.user;
   const displayName = liveUser?.name ?? userName;
@@ -121,6 +133,22 @@ export function FileLibrary({
     onError: () => toast.error("Could not delete file"),
   });
 
+  const renameFolderMut = useMutation({
+    mutationFn: (input: { folderId: string; name: string }) =>
+      renameFolderAction(input),
+    onSuccess: (_data, variables) => {
+      void invalidateStorage();
+      const trimmed = variables.name.trim();
+      setCrumbs((c) =>
+        c.map((crumb) =>
+          crumb.id === variables.folderId
+            ? { ...crumb, label: trimmed }
+            : crumb,
+        ),
+      );
+    },
+  });
+
   const inviteMut = useMutation({
     mutationFn: generateInvitePhraseAction,
     onError: () => toast.error("Could not generate phrase"),
@@ -130,6 +158,7 @@ export function FileLibrary({
     createFolderMut.isPending ||
     deleteFolderMut.isPending ||
     deleteFileMut.isPending ||
+    renameFolderMut.isPending ||
     inviteMut.isPending ||
     uploadBusy;
 
@@ -184,6 +213,37 @@ export function FileLibrary({
       onError: () =>
         toast.error("Could not generate phrase", { id: toastId }),
     });
+  }
+
+  function openRenameDialog(f: FolderRow) {
+    setRenameInput(f.name);
+    setRenameTarget(f);
+  }
+
+  function confirmRename() {
+    const f = renameTarget;
+    if (!f) return;
+    const next = renameInput.trim();
+    if (!next) {
+      toast.error("Folder name is required");
+      return;
+    }
+    const toastId = toast.loading("Renaming folder…");
+    renameFolderMut.mutate(
+      { folderId: f.id, name: next },
+      {
+        onSuccess: () => {
+          setRenameTarget(null);
+          toast.success("Folder renamed", { id: toastId });
+        },
+        onError: (e) => {
+          toast.error(
+            e instanceof Error ? e.message : "Could not rename folder",
+            { id: toastId },
+          );
+        },
+      },
+    );
   }
 
   function executeDelete(target: DeleteTarget) {
@@ -300,6 +360,56 @@ export function FileLibrary({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <Dialog
+        open={renameTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRenameTarget(null);
+        }}
+      >
+        <DialogContent showClose={false}>
+          <DialogHeader>
+            <DialogTitle>Rename folder</DialogTitle>
+            <DialogDescription>
+              {renameTarget
+                ? `New name for “${renameTarget.name}”.`
+                : "Enter a new folder name."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="rename-folder">Name</Label>
+            <Input
+              id="rename-folder"
+              value={renameInput}
+              onChange={(e) => setRenameInput(e.target.value)}
+              disabled={busy}
+              placeholder="Folder name"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  confirmRename();
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setRenameTarget(null)}
+              disabled={renameFolderMut.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmRename}
+              disabled={renameFolderMut.isPending}
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <FilePreviewPanel
         file={previewFile}
         onClose={() => setPreviewFile(null)}
@@ -436,23 +546,41 @@ export function FileLibrary({
                 <span className="truncate">{f.name}</span>
               </button>
               {isAdmin && (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="shrink-0 text-muted-foreground hover:text-destructive"
-                  disabled={busy}
-                  aria-label={`Remove ${f.name}`}
-                  onClick={() =>
-                    setDeleteTarget({
-                      kind: "folder",
-                      id: f.id,
-                      label: f.name,
-                    })
-                  }
-                >
-                  <Trash2 className="size-4" />
-                </Button>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="size-8 text-muted-foreground"
+                    disabled={busy}
+                    aria-label={`Rename ${f.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openRenameDialog(f);
+                    }}
+                  >
+                    <Pencil className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="size-8 text-muted-foreground hover:text-destructive"
+                    disabled={busy}
+                    aria-label={`Remove ${f.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPreviewFile(null);
+                      setDeleteTarget({
+                        kind: "folder",
+                        id: f.id,
+                        label: f.name,
+                      });
+                    }}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
               )}
             </li>
           ))}

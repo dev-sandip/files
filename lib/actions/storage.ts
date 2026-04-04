@@ -7,7 +7,7 @@ import { normalizeActionError } from "@/lib/action-utils";
 import { auth } from "@/lib/auth";
 import { isAdminUser } from "@/lib/auth-user";
 import { getBucket, S3 } from "@/lib/S3Client";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { headers } from "next/headers";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
@@ -163,6 +163,79 @@ export async function createFolderAction(raw: unknown) {
     });
 
     return { id, name, parentId, createdAt: new Date().toISOString() };
+  } catch (e) {
+    throw normalizeActionError(e);
+  }
+}
+
+const renameFolderBody = z.object({
+  folderId: z.string().min(1),
+  name: z.string().min(1).max(200),
+});
+
+export async function renameFolderAction(raw: unknown) {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user || !isAdminUser(session.user)) {
+      throw new Error("Forbidden");
+    }
+
+    const parsed = renameFolderBody.safeParse(raw);
+    if (!parsed.success) throw new Error("Invalid body");
+
+    const name = parsed.data.name.trim();
+    if (!name || name.includes("/") || name.includes("\\")) {
+      throw new Error("Invalid folder name");
+    }
+
+    const folderId = parsed.data.folderId;
+    const rows = await db
+      .select()
+      .from(storageFolder)
+      .where(eq(storageFolder.id, folderId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) throw new Error("Not found");
+
+    if (row.name === name) {
+      return {
+        id: folderId,
+        name,
+        parentId: row.parentId,
+        createdAt: toIso(row.createdAt),
+      };
+    }
+
+    const parentId = row.parentId;
+
+    const dup = await db
+      .select({ id: storageFolder.id })
+      .from(storageFolder)
+      .where(
+        and(
+          eq(storageFolder.name, name),
+          parentId === null
+            ? isNull(storageFolder.parentId)
+            : eq(storageFolder.parentId, parentId),
+          ne(storageFolder.id, folderId),
+        ),
+      )
+      .limit(1);
+    if (dup.length) {
+      throw new Error("A folder with this name already exists here");
+    }
+
+    await db
+      .update(storageFolder)
+      .set({ name })
+      .where(eq(storageFolder.id, folderId));
+
+    return {
+      id: folderId,
+      name,
+      parentId,
+      createdAt: toIso(row.createdAt),
+    };
   } catch (e) {
     throw normalizeActionError(e);
   }
