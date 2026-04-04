@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Outfit } from "next/font/google";
 import "./globals.css";
+import { QueryProvider } from "@/components/providers/query-provider";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -40,11 +41,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <div className="fixed top-4 right-4">
-            <ThemeToggle />
-          </div>
-          {children}
-          <Toaster richColors closeButton />
+          <QueryProvider>
+            <div className="fixed top-4 right-4">
+              <ThemeToggle />
+            </div>
+            {children}
+            <Toaster richColors closeButton />
+          </QueryProvider>
         </ThemeProvider>
       </body>
     </html>

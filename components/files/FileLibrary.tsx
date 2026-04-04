@@ -1,5 +1,12 @@
 "use client";
 
+import {
+  createFolderAction,
+  deleteFileAction,
+  deleteFolderAction,
+  listStorageAction,
+} from "@/lib/actions/storage";
+import { generateInvitePhraseAction } from "@/lib/actions/invite";
 import { authClient } from "@/lib/auth-client";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -26,26 +33,19 @@ import {
   Upload,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+
+import type {
+  StorageFileRow,
+  StorageFolderRow,
+} from "@/lib/actions/storage";
 
 type Crumb = { id: string | null; label: string };
 
-type FolderRow = {
-  id: string;
-  name: string;
-  parentId: string | null;
-  createdAt: string;
-};
-
-type FileRow = {
-  id: string;
-  name: string;
-  mimeType: string;
-  sizeBytes: number;
-  folderId: string | null;
-  createdAt: string;
-};
+type FolderRow = StorageFolderRow;
+type FileRow = StorageFileRow;
 
 type DeleteTarget =
   | { kind: "folder"; id: string; label: string }
@@ -62,16 +62,14 @@ export function FileLibrary({
   userImage?: string | null;
   isAdmin: boolean;
 }) {
+  const queryClient = useQueryClient();
   const [crumbs, setCrumbs] = useState<Crumb[]>([
     { id: null, label: "Library" },
   ]);
   const parentId = crumbs[crumbs.length - 1]?.id ?? null;
 
-  const [folders, setFolders] = useState<FolderRow[]>([]);
-  const [files, setFiles] = useState<FileRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [folderName, setFolderName] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewFile, setPreviewFile] = useState<FileRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
@@ -80,30 +78,60 @@ export function FileLibrary({
   const displayName = liveUser?.name ?? userName;
   const displayImage = liveUser?.image ?? userImage ?? null;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const q =
-        parentId === null ? "" : `?parentId=${encodeURIComponent(parentId)}`;
-      const res = await fetch(`/api/storage${q}`);
-      if (!res.ok) {
-        toast.error("Could not load library");
-        return;
-      }
-      const data = (await res.json()) as {
-        folders: FolderRow[];
-        files: FileRow[];
-      };
-      setFolders(data.folders);
-      setFiles(data.files);
-    } finally {
-      setLoading(false);
-    }
-  }, [parentId]);
+  const {
+    data: storageData,
+    isPending: loading,
+    error: storageError,
+  } = useQuery({
+    queryKey: ["storage", parentId],
+    queryFn: () => listStorageAction(parentId),
+  });
+
+  const folders = storageData?.folders ?? [];
+  const files = storageData?.files ?? [];
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (storageError) {
+      toast.error(
+        storageError instanceof Error
+          ? storageError.message
+          : "Could not load library",
+      );
+    }
+  }, [storageError]);
+
+  const invalidateStorage = () =>
+    queryClient.invalidateQueries({ queryKey: ["storage", parentId] });
+
+  const createFolderMut = useMutation({
+    mutationFn: (name: string) =>
+      createFolderAction({ name, parentId }),
+    onSuccess: () => void invalidateStorage(),
+  });
+
+  const deleteFolderMut = useMutation({
+    mutationFn: deleteFolderAction,
+    onSuccess: () => void invalidateStorage(),
+    onError: () => toast.error("Could not delete folder"),
+  });
+
+  const deleteFileMut = useMutation({
+    mutationFn: deleteFileAction,
+    onSuccess: () => void invalidateStorage(),
+    onError: () => toast.error("Could not delete file"),
+  });
+
+  const inviteMut = useMutation({
+    mutationFn: generateInvitePhraseAction,
+    onError: () => toast.error("Could not generate phrase"),
+  });
+
+  const busy =
+    createFolderMut.isPending ||
+    deleteFolderMut.isPending ||
+    deleteFileMut.isPending ||
+    inviteMut.isPending ||
+    uploadBusy;
 
   function goCrumb(index: number) {
     setCrumbs((c) => c.slice(0, index + 1));
@@ -113,104 +141,69 @@ export function FileLibrary({
     setCrumbs((c) => [...c, { id: f.id, label: f.name }]);
   }
 
-  async function createFolder(e: React.FormEvent) {
+  function createFolder(e: React.FormEvent) {
     e.preventDefault();
     if (!folderName.trim()) return;
-    setBusy(true);
     const toastId = toast.loading("Creating folder…");
-    try {
-      const res = await fetch("/api/storage/folders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: folderName.trim(),
-          parentId,
-        }),
-      });
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(j.error ?? "Could not create folder", { id: toastId });
-        return;
-      }
-      setFolderName("");
-      toast.success("Folder created", { id: toastId });
-      await load();
-    } finally {
-      setBusy(false);
-    }
+    createFolderMut.mutate(folderName.trim(), {
+      onSuccess: () => {
+        setFolderName("");
+        toast.success("Folder created", { id: toastId });
+      },
+      onError: (err) => {
+        toast.error(
+          err instanceof Error ? err.message : "Could not create folder",
+          { id: toastId },
+        );
+      },
+    });
   }
 
-  async function generateInvite() {
-    setBusy(true);
+  function generateInvite() {
     const toastId = toast.loading("Generating invitation phrase…");
-    try {
-      const res = await fetch("/api/invite/generate", { method: "POST" });
-      if (!res.ok) {
-        toast.error("Could not generate phrase", { id: toastId });
-        return;
-      }
-      const data = (await res.json()) as {
-        phrase: string;
-        message: string;
-        expiresAt?: string;
-      };
-      const expHint = data.expiresAt
-        ? `Valid until ${new Date(data.expiresAt).toLocaleString()}`
-        : undefined;
-      try {
-        await navigator.clipboard.writeText(data.phrase);
-        toast.success("Copied invitation phrase to clipboard", {
-          id: toastId,
-          description: expHint,
-        });
-      } catch {
-        toast.message(data.message, {
-          id: toastId,
-          description: [data.phrase, expHint].filter(Boolean).join(" · "),
-        });
-      }
-    } finally {
-      setBusy(false);
-    }
+    inviteMut.mutate(undefined, {
+      onSuccess: (data) => {
+        const expHint = data.expiresAt
+          ? `Valid until ${new Date(data.expiresAt).toLocaleString()}`
+          : undefined;
+        void (async () => {
+          try {
+            await navigator.clipboard.writeText(data.phrase);
+            toast.success("Copied invitation phrase to clipboard", {
+              id: toastId,
+              description: expHint,
+            });
+          } catch {
+            toast.message(data.message, {
+              id: toastId,
+              description: [data.phrase, expHint].filter(Boolean).join(" · "),
+            });
+          }
+        })();
+      },
+      onError: () =>
+        toast.error("Could not generate phrase", { id: toastId }),
+    });
   }
 
-  async function executeDelete(target: DeleteTarget) {
-    setBusy(true);
+  function executeDelete(target: DeleteTarget) {
     if (target.kind === "folder") {
       const toastId = toast.loading("Deleting folder…");
-      try {
-        const res = await fetch(`/api/storage/folders/${target.id}`, {
-          method: "DELETE",
-        });
-        if (!res.ok) {
-          toast.error("Could not delete folder", { id: toastId });
-          return;
-        }
-        toast.success("Folder deleted", { id: toastId });
-        await load();
-      } finally {
-        setBusy(false);
-      }
+      deleteFolderMut.mutate(target.id, {
+        onSuccess: () => toast.success("Folder deleted", { id: toastId }),
+        onError: () => toast.error("Could not delete folder", { id: toastId }),
+      });
       return;
     }
     const toastId = toast.loading("Deleting file…");
-    try {
-      const res = await fetch(`/api/storage/files/${target.id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        toast.error("Could not delete file", { id: toastId });
-        return;
-      }
-      toast.success("File deleted", { id: toastId });
-      await load();
-    } finally {
-      setBusy(false);
-    }
+    deleteFileMut.mutate(target.id, {
+      onSuccess: () => toast.success("File deleted", { id: toastId }),
+      onError: () => toast.error("Could not delete file", { id: toastId }),
+    });
   }
 
   async function uploadPdf(f: File) {
-    setBusy(true);
+    setUploadBusy(true);
     const toastId = toast.loading(`Preparing upload: ${f.name}`);
     try {
       const prep = await fetch("/api/storage/upload-url", {
@@ -255,13 +248,13 @@ export function FileLibrary({
       });
 
       toast.success(`Uploaded ${f.name}`, { id: toastId });
-      await load();
+      await invalidateStorage();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Upload to storage failed";
       toast.error(message, { id: toastId });
     } finally {
-      setBusy(false);
+      setUploadBusy(false);
     }
   }
 
@@ -342,7 +335,7 @@ export function FileLibrary({
               variant="outline"
               size="sm"
               disabled={busy}
-              onClick={() => void generateInvite()}
+              onClick={() => generateInvite()}
             >
               New invite phrase
             </Button>

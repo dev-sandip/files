@@ -1,6 +1,12 @@
 "use client";
 
-import { adminListUsers, adminPost, type AdminListUser } from "@/lib/admin-http";
+import {
+  banUserAction,
+  listAdminUsersAction,
+  setUserRoleAction,
+  unbanUserAction,
+} from "@/lib/actions/admin";
+import type { AdminListUser } from "@/lib/admin-types";
 import { UserAvatar } from "@/components/user-avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,43 +28,66 @@ import {
 } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
 import { MoreHorizontal } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export function AdminUsersPanel({ currentUserId }: { currentUserId: string }) {
-  const [users, setUsers] = useState<AdminListUser[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [banTarget, setBanTarget] = useState<AdminListUser | null>(null);
   const [banReasonInput, setBanReasonInput] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await adminListUsers();
-      setUsers(data.users);
-      setTotal(data.total);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not load users");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data, isPending: loading, error } = useQuery({
+    queryKey: ["admin-users"],
+    queryFn: listAdminUsersAction,
+  });
+
+  const users = data?.users ?? [];
+  const total = data?.total ?? 0;
 
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function run(label: string, path: string, body: Record<string, unknown>) {
-    const tid = toast.loading(label);
-    try {
-      await adminPost(path, body);
-      toast.success("Done", { id: tid });
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Request failed", { id: tid });
+    if (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not load users",
+      );
     }
-  }
+  }, [error]);
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+
+  const roleMut = useMutation({
+    mutationFn: setUserRoleAction,
+    onSuccess: () => {
+      toast.success("Done");
+      void invalidate();
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : "Request failed"),
+  });
+
+  const banMut = useMutation({
+    mutationFn: banUserAction,
+    onSuccess: () => {
+      toast.success("Done");
+      void invalidate();
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : "Request failed"),
+  });
+
+  const unbanMut = useMutation({
+    mutationFn: unbanUserAction,
+    onSuccess: () => {
+      toast.success("Done");
+      void invalidate();
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : "Request failed"),
+  });
+
+  const adminBusy =
+    roleMut.isPending || banMut.isPending || unbanMut.isPending;
 
   function openBanDialog(u: AdminListUser) {
     setBanReasonInput("");
@@ -70,10 +99,7 @@ export function AdminUsersPanel({ currentUserId }: { currentUserId: string }) {
     if (!u) return;
     const reason = banReasonInput.trim() || undefined;
     setBanTarget(null);
-    void run("Banning user…", "/admin/ban-user", {
-      userId: u.id,
-      banReason: reason,
-    });
+    banMut.mutate({ userId: u.id, banReason: reason });
   }
 
   return (
@@ -181,45 +207,45 @@ export function AdminUsersPanel({ currentUserId }: { currentUserId: string }) {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuItem
-                      disabled={self || isAdminRole}
-                      onClick={() =>
-                        void run(
-                          "Promoting…",
-                          "/admin/set-role",
+                      disabled={self || isAdminRole || adminBusy}
+                      onClick={() => {
+                        const tid = toast.loading("Promoting…");
+                        roleMut.mutate(
                           { userId: u.id, role: "admin" },
-                        )
-                      }
+                          { onSettled: () => toast.dismiss(tid) },
+                        );
+                      }}
                     >
                       Make admin
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      disabled={self || !isAdminRole}
-                      onClick={() =>
-                        void run(
-                          "Updating role…",
-                          "/admin/set-role",
+                      disabled={self || !isAdminRole || adminBusy}
+                      onClick={() => {
+                        const tid = toast.loading("Updating role…");
+                        roleMut.mutate(
                           { userId: u.id, role: "user" },
-                        )
-                      }
+                          { onSettled: () => toast.dismiss(tid) },
+                        );
+                      }}
                     >
                       Make user
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
-                      disabled={self || !!u.banned}
+                      disabled={self || !!u.banned || adminBusy}
                       onClick={() => openBanDialog(u)}
                     >
                       Ban user
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      disabled={self || !u.banned}
-                      onClick={() =>
-                        void run(
-                          "Unbanning…",
-                          "/admin/unban-user",
+                      disabled={self || !u.banned || adminBusy}
+                      onClick={() => {
+                        const tid = toast.loading("Unbanning…");
+                        unbanMut.mutate(
                           { userId: u.id },
-                        )
-                      }
+                          { onSettled: () => toast.dismiss(tid) },
+                        );
+                      }}
                     >
                       Unban user
                     </DropdownMenuItem>

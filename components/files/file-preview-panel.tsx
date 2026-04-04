@@ -1,9 +1,14 @@
 "use client";
 
+import {
+  getFilePresignedUrlAction,
+  getFileTextContentAction,
+} from "@/lib/actions/preview";
 import { getPreviewKind } from "@/lib/file-preview-kind";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, Loader2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 
 export type PreviewFile = {
   id: string;
@@ -49,10 +54,43 @@ export function FilePreviewPanel({
   const downloadPath = file ? `/api/storage/files/${file.id}/download` : null;
   const kind = file ? getPreviewKind(file.mimeType, file.name) : "none";
 
-  const [presigned, setPresigned] = useState<string | null>(null);
-  const [presignErr, setPresignErr] = useState<string | null>(null);
-  const [textBody, setTextBody] = useState<string | null>(null);
-  const [textErr, setTextErr] = useState<string | null>(null);
+  const needPresign =
+    kind === "image" ||
+    kind === "video" ||
+    kind === "audio" ||
+    kind === "iframe";
+
+  const {
+    data: presignData,
+    isLoading: presignLoading,
+    error: presignError,
+  } = useQuery({
+    queryKey: ["preview-presign", file?.id],
+    queryFn: () => getFilePresignedUrlAction(file!.id),
+    enabled: !!file && needPresign,
+  });
+
+  const {
+    data: textBody,
+    isLoading: textLoading,
+    error: textQueryError,
+    isError: textIsError,
+  } = useQuery({
+    queryKey: ["preview-text", file?.id],
+    queryFn: async () => {
+      const r = await getFileTextContentAction(file!.id);
+      if (!r.ok) {
+        if (r.code === "too_large") {
+          throw new Error(
+            "This file is too large for text preview. Use Open in new tab.",
+          );
+        }
+        throw new Error("Could not load file content");
+      }
+      return r.text;
+    },
+    enabled: !!file && kind === "text",
+  });
 
   useEffect(() => {
     if (!file) return;
@@ -63,77 +101,22 @@ export function FilePreviewPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [file, onClose]);
 
-  useEffect(() => {
-    setPresigned(null);
-    setPresignErr(null);
-    setTextBody(null);
-    setTextErr(null);
-  }, [file?.id]);
-
-  useEffect(() => {
-    if (!file) return;
-    const needPresign =
-      kind === "image" ||
-      kind === "video" ||
-      kind === "audio" ||
-      kind === "iframe";
-    if (!needPresign) return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await fetch(`/api/storage/files/${file.id}/download`, {
-          credentials: "include",
-          headers: { Accept: "application/json" },
-        });
-        if (!r.ok) throw new Error("Could not resolve file URL");
-        const j = (await r.json()) as { url?: string };
-        if (!j.url) throw new Error("Missing URL");
-        if (!cancelled) setPresigned(j.url);
-      } catch (e) {
-        if (!cancelled) {
-          setPresignErr(e instanceof Error ? e.message : "Failed to load preview");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [file, kind]);
-
-  useEffect(() => {
-    if (!file || kind !== "text") return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await fetch(`/api/storage/files/${file.id}/content`, {
-          credentials: "include",
-        });
-        if (r.status === 413) {
-          if (!cancelled) {
-            setTextErr("This file is too large for text preview. Use Open in new tab.");
-          }
-          return;
-        }
-        if (!r.ok) throw new Error("Could not load file content");
-        const t = await r.text();
-        if (!cancelled) setTextBody(t);
-      } catch (e) {
-        if (!cancelled) {
-          setTextErr(e instanceof Error ? e.message : "Failed to load text");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [file, kind]);
-
   if (!file || !downloadPath) return null;
 
   const activeFile = file;
   const activePath = downloadPath;
+
+  const presigned = presignData?.url ?? null;
+  const presignErr =
+    presignError instanceof Error ? presignError.message : presignError
+      ? "Failed to load preview"
+      : null;
+
+  const textErr = textIsError
+    ? textQueryError instanceof Error
+      ? textQueryError.message
+      : "Failed to load text"
+    : null;
 
   const label =
     kind === "pdf" ? "PDF"
@@ -159,7 +142,7 @@ export function FilePreviewPanel({
       if (presignErr) {
         return <Fallback message={presignErr} href={activePath} />;
       }
-      if (!presigned) return <Loading />;
+      if (presignLoading || !presigned) return <Loading />;
       return (
         <div className="flex h-full items-center justify-center overflow-auto p-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -176,7 +159,7 @@ export function FilePreviewPanel({
       if (presignErr) {
         return <Fallback message={presignErr} href={activePath} />;
       }
-      if (!presigned) return <Loading />;
+      if (presignLoading || !presigned) return <Loading />;
       return (
         <div className="flex h-full items-center justify-center overflow-auto p-4 bg-black/80">
           <video
@@ -193,7 +176,7 @@ export function FilePreviewPanel({
       if (presignErr) {
         return <Fallback message={presignErr} href={activePath} />;
       }
-      if (!presigned) return <Loading />;
+      if (presignLoading || !presigned) return <Loading />;
       return (
         <div className="flex h-full flex-col items-center justify-center gap-6 p-8">
           <p className="text-sm text-muted-foreground truncate max-w-full px-4">
@@ -208,7 +191,7 @@ export function FilePreviewPanel({
       if (textErr) {
         return <Fallback message={textErr} href={activePath} />;
       }
-      if (textBody === null) return <Loading />;
+      if (textLoading || textBody === undefined) return <Loading />;
       return (
         <pre className="h-full overflow-auto p-4 text-sm whitespace-pre-wrap break-words font-mono bg-muted/20">
           {textBody}
@@ -220,7 +203,7 @@ export function FilePreviewPanel({
       if (presignErr) {
         return <Fallback message={presignErr} href={activePath} />;
       }
-      if (!presigned) return <Loading />;
+      if (presignLoading || !presigned) return <Loading />;
       return (
         <iframe
           title={activeFile.name}

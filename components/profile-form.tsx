@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  changePasswordAction,
+  setProfileImageKeyAction,
+  updateProfileNameAction,
+} from "@/lib/actions/profile";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,11 +13,13 @@ import { UserAvatar } from "@/components/user-avatar";
 import { isAdminUser } from "@/lib/auth-user";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 export function ProfileForm() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: session, isPending, refetch } = authClient.useSession();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -21,10 +28,37 @@ export function ProfileForm() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [busy, setBusy] = useState(false);
 
   const user = session?.user;
   const admin = isAdminUser(user);
+
+  const updateNameMut = useMutation({
+    mutationFn: updateProfileNameAction,
+    onSuccess: async () => {
+      await refetch();
+      router.refresh();
+      await queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+  });
+
+  const imageKeyMut = useMutation({
+    mutationFn: setProfileImageKeyAction,
+    onSuccess: async () => {
+      await refetch();
+      router.refresh();
+      await queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+  });
+
+  const passwordMut = useMutation({
+    mutationFn: changePasswordAction,
+  });
+
+  const busy =
+    updateNameMut.isPending ||
+    imageKeyMut.isPending ||
+    passwordMut.isPending;
+
   if (isPending || !user) {
     return (
       <p className="text-sm text-muted-foreground py-12 text-center">Loading…</p>
@@ -34,7 +68,7 @@ export function ProfileForm() {
   const displayName = nameDirty ? name : user.name;
   const displayImage = user.image;
 
-  async function saveProfile(e: React.FormEvent) {
+  function saveProfile(e: React.FormEvent) {
     e.preventDefault();
     if (!user) return;
     const nextName = nameDirty ? name.trim() : user.name;
@@ -42,28 +76,24 @@ export function ProfileForm() {
       toast.error("Name is required");
       return;
     }
-    setBusy(true);
     const tid = toast.loading("Saving profile…");
-    try {
-      const { error } = await authClient.updateUser({
-        name: nextName,
-      } as never);
-      if (error) {
-        toast.error(error.message ?? "Update failed", { id: tid });
-        return;
-      }
-      toast.success("Profile updated", { id: tid });
-      setNameDirty(false);
-      setName("");
-      await refetch();
-      router.refresh();
-    } finally {
-      setBusy(false);
-    }
+    updateNameMut.mutate(nextName, {
+      onSuccess: () => {
+        toast.success("Profile updated", { id: tid });
+        setNameDirty(false);
+        setName("");
+      },
+      onError: (e) => {
+        toast.error(
+          e instanceof Error ? e.message : "Update failed",
+          { id: tid },
+        );
+      },
+    });
   }
 
   async function onAvatarSelected(f: File) {
-    setBusy(true);
+    if (!user) return;
     const tid = toast.loading("Uploading photo…");
     try {
       const fd = new FormData();
@@ -79,21 +109,23 @@ export function ProfileForm() {
         return;
       }
       const { key } = (await up.json()) as { key: string };
-      const { error } = await authClient.updateUser({ image: key } as never);
-      if (error) {
-        toast.error(error.message ?? "Could not save avatar", { id: tid });
-        return;
-      }
-      toast.success("Photo updated", { id: tid });
-      await refetch();
-      router.refresh();
-    } finally {
-      setBusy(false);
+      imageKeyMut.mutate(key, {
+        onSuccess: () => toast.success("Photo updated", { id: tid }),
+        onError: (e) => {
+          toast.error(
+            e instanceof Error ? e.message : "Could not save avatar",
+            { id: tid },
+          );
+        },
+      });
+    } catch {
+      toast.error("Upload failed", { id: tid });
     }
   }
 
-  async function changePassword(e: React.FormEvent) {
+  function changePassword(e: React.FormEvent) {
     e.preventDefault();
+    if (!user) return;
     if (newPassword.length < 8) {
       toast.error("New password must be at least 8 characters");
       return;
@@ -102,25 +134,24 @@ export function ProfileForm() {
       toast.error("New passwords do not match");
       return;
     }
-    setBusy(true);
     const tid = toast.loading("Updating password…");
-    try {
-      const { error } = await authClient.changePassword({
-        currentPassword,
-        newPassword,
-        revokeOtherSessions: false,
-      });
-      if (error) {
-        toast.error(error.message ?? "Password change failed", { id: tid });
-        return;
-      }
-      toast.success("Password updated", { id: tid });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-    } finally {
-      setBusy(false);
-    }
+    passwordMut.mutate(
+      { currentPassword, newPassword, revokeOtherSessions: false },
+      {
+        onSuccess: () => {
+          toast.success("Password updated", { id: tid });
+          setCurrentPassword("");
+          setNewPassword("");
+          setConfirmPassword("");
+        },
+        onError: (e) => {
+          toast.error(
+            e instanceof Error ? e.message : "Password change failed",
+            { id: tid },
+          );
+        },
+      },
+    );
   }
 
   return (
