@@ -160,12 +160,20 @@ export function ProfileForm() {
         <h1 className="text-lg font-medium">Profile</h1>
         <div className="flex items-center gap-3 text-sm">
           {admin ? (
-            <Link
-              href="/admin/users"
-              className="text-muted-foreground underline-offset-2 hover:underline"
-            >
-              Users
-            </Link>
+            <>
+              <Link
+                href="/admin/analytics"
+                className="text-muted-foreground underline-offset-2 hover:underline"
+              >
+                Analytics
+              </Link>
+              <Link
+                href="/admin/users"
+                className="text-muted-foreground underline-offset-2 hover:underline"
+              >
+                Users
+              </Link>
+            </>
           ) : null}
           <Link
             href="/files"

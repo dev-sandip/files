@@ -547,9 +547,14 @@ export function FileLibrary({
             <Link href="/profile">Profile</Link>
           </Button>
           {isAdmin ? (
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/admin/users">Users</Link>
-            </Button>
+            <>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/admin/analytics">Analytics</Link>
+              </Button>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/admin/users">Users</Link>
+              </Button>
+            </>
           ) : null}
           {isAdmin && (
             <Button

@@ -155,12 +155,20 @@ export function AdminUsersPanel({ currentUserId }: { currentUserId: string }) {
             {loading ? "…" : `${total} total`} · roles and bans
           </p>
         </div>
-        <Link
-          href="/files"
-          className="text-sm text-muted-foreground underline-offset-2 hover:underline"
-        >
-          Back to files
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/admin/analytics"
+            className="text-sm text-muted-foreground underline-offset-2 hover:underline"
+          >
+            Analytics
+          </Link>
+          <Link
+            href="/files"
+            className="text-sm text-muted-foreground underline-offset-2 hover:underline"
+          >
+            Back to files
+          </Link>
+        </div>
       </div>
 
       {loading ? (
