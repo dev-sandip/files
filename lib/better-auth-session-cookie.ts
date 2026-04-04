@@ -8,9 +8,9 @@ const SECURE_COOKIE_PREFIX = "__Secure-";
 function parseCookieHeader(cookieHeader: string): Map<string, string> {
   const map = new Map<string, string>();
   for (const part of cookieHeader.split("; ")) {
-    const m = part.match(/^([^=]+)=(.*)$/s);
-    if (!m) continue;
-    map.set(m[1], m[2]);
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    map.set(part.slice(0, eq), part.slice(eq + 1));
   }
   return map;
 }
