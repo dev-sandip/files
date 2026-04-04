@@ -1,6 +1,10 @@
+import { db } from "@/db";
+import { user as userTable } from "@/db/schema/auth";
 import { auth } from "@/lib/auth";
+import { userImageToS3Key } from "@/lib/avatar-storage";
 import { getBucket, S3 } from "@/lib/S3Client";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 const ALLOWED = new Map([
@@ -41,6 +45,14 @@ export async function POST(request: Request) {
   }
 
   const userId = session.user.id;
+
+  const previous = await db
+    .select({ image: userTable.image })
+    .from(userTable)
+    .where(eq(userTable.id, userId))
+    .limit(1);
+  const oldKey = userImageToS3Key(previous[0]?.image ?? null);
+
   const key = `avatars/${userId}/${Date.now()}.${ext}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
@@ -54,6 +66,24 @@ export async function POST(request: Request) {
       CacheControl: "public, max-age=31536000",
     }),
   );
+
+  if (
+    oldKey &&
+    oldKey !== key &&
+    oldKey.startsWith(`avatars/${userId}/`)
+  ) {
+    try {
+      await S3.send(
+        new DeleteObjectCommand({
+          Bucket: getBucket(),
+          Key: oldKey,
+        }),
+      );
+    } catch {
+      // Best-effort cleanup; new object is already stored.
+      console.error(`Failed to delete old avatar: ${oldKey}`);
+    }
+  }
 
   /** Store the object key on the user — the app serves it via `/api/avatar/[userId]` (private bucket). */
   return NextResponse.json({ key });
