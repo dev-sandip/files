@@ -19,8 +19,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PDF library",
-  description: "Shared PDF storage with folders",
+  title: "Files — shared library",
+  description:
+    "Invite-only access to a private file library with folders, previews, and role-aware uploads.",
 };
 
 export default function RootLayout({
