@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 
 function resolveAvatarSrc(
@@ -54,10 +55,12 @@ export function UserAvatar({
 
   if (src && !broken) {
     return (
-      <img
+      <Image
         key={src}
         src={src}
         alt=""
+        width={size}
+        height={size}
         className={cn("rounded-full object-cover bg-muted", className)}
         style={dim}
         onError={() => setBroken(true)}
