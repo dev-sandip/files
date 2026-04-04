@@ -132,6 +132,9 @@ export function FilePreviewPanel({
 
   if (!file || !downloadPath) return null;
 
+  const activeFile = file;
+  const activePath = downloadPath;
+
   const label =
     kind === "pdf" ? "PDF"
     : kind === "image" ? "Image"
@@ -145,8 +148,8 @@ export function FilePreviewPanel({
     if (kind === "pdf") {
       return (
         <iframe
-          title={file.name}
-          src={downloadPath}
+          title={activeFile.name}
+          src={activePath}
           className="h-full w-full border-0"
         />
       );
@@ -154,7 +157,7 @@ export function FilePreviewPanel({
 
     if (kind === "image") {
       if (presignErr) {
-        return <Fallback message={presignErr} href={downloadPath} />;
+        return <Fallback message={presignErr} href={activePath} />;
       }
       if (!presigned) return <Loading />;
       return (
@@ -171,7 +174,7 @@ export function FilePreviewPanel({
 
     if (kind === "video") {
       if (presignErr) {
-        return <Fallback message={presignErr} href={downloadPath} />;
+        return <Fallback message={presignErr} href={activePath} />;
       }
       if (!presigned) return <Loading />;
       return (
@@ -188,13 +191,13 @@ export function FilePreviewPanel({
 
     if (kind === "audio") {
       if (presignErr) {
-        return <Fallback message={presignErr} href={downloadPath} />;
+        return <Fallback message={presignErr} href={activePath} />;
       }
       if (!presigned) return <Loading />;
       return (
         <div className="flex h-full flex-col items-center justify-center gap-6 p-8">
           <p className="text-sm text-muted-foreground truncate max-w-full px-4">
-            {file.name}
+            {activeFile.name}
           </p>
           <audio src={presigned} controls className="w-full max-w-md" />
         </div>
@@ -203,7 +206,7 @@ export function FilePreviewPanel({
 
     if (kind === "text") {
       if (textErr) {
-        return <Fallback message={textErr} href={downloadPath} />;
+        return <Fallback message={textErr} href={activePath} />;
       }
       if (textBody === null) return <Loading />;
       return (
@@ -215,12 +218,12 @@ export function FilePreviewPanel({
 
     if (kind === "iframe") {
       if (presignErr) {
-        return <Fallback message={presignErr} href={downloadPath} />;
+        return <Fallback message={presignErr} href={activePath} />;
       }
       if (!presigned) return <Loading />;
       return (
         <iframe
-          title={file.name}
+          title={activeFile.name}
           src={presigned}
           sandbox=""
           className="h-full w-full border-0"
@@ -231,7 +234,7 @@ export function FilePreviewPanel({
     return (
       <Fallback
         message="There is no built-in preview for this file type. You can still open or download it."
-        href={downloadPath}
+        href={activePath}
       />
     );
   }
@@ -241,17 +244,17 @@ export function FilePreviewPanel({
       className="fixed inset-0 z-50 flex flex-col bg-background"
       role="dialog"
       aria-modal="true"
-      aria-label={`Preview ${file.name}`}
+      aria-label={`Preview ${activeFile.name}`}
     >
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-3 py-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{file.name}</p>
+          <p className="truncate text-sm font-medium">{activeFile.name}</p>
           <p className="truncate text-xs text-muted-foreground">{label}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <Button variant="ghost" size="sm" asChild>
             <a
-              href={downloadPath}
+              href={activePath}
               target="_blank"
               rel="noopener noreferrer"
               className="gap-1"

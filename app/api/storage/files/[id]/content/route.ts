@@ -56,7 +56,9 @@ export async function GET(
   }
 
   const bytes = await out.Body.transformToByteArray();
-  return new NextResponse(bytes, {
+  const ab = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(ab).set(bytes);
+  return new NextResponse(ab, {
     headers: {
       "Content-Type": `${file.mimeType || "text/plain"}; charset=utf-8`,
       "Cache-Control": "private, max-age=60",

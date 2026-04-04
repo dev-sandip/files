@@ -45,7 +45,9 @@ export async function GET(
         return new NextResponse(null, { status: 404 });
       }
       const bytes = await out.Body.transformToByteArray();
-      return new NextResponse(bytes, {
+      const ab = new ArrayBuffer(bytes.byteLength);
+      new Uint8Array(ab).set(bytes);
+      return new NextResponse(ab, {
         headers: {
           "Content-Type": out.ContentType || "image/jpeg",
           "Cache-Control": "private, max-age=300",

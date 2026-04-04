@@ -6,10 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { toast } from "sonner";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/files";
@@ -71,7 +71,42 @@ export default function LoginPage() {
             Register with an invitation phrase
           </Link>
         </p>
+        <div className="text-center text-xs text-muted-foreground space-y-2 pt-6 border-t border-border/50">
+          <p className="font-medium text-foreground/90">Sandip Sapkota</p>
+          <p>
+            <a
+              href="mailto:contact@thesandip.dev"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              contact@thesandip.dev
+            </a>
+          </p>
+          <p>
+            <a
+              href="https://github.com/dev-sandip"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              GitHub: dev-sandip
+            </a>
+          </p>
+        </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex flex-col items-center justify-center px-4 text-sm text-muted-foreground">
+          Loading…
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }
