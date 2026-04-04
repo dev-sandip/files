@@ -42,9 +42,11 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
 
 import type {
@@ -80,7 +82,8 @@ export function FileLibrary({
 
   const [folderName, setFolderName] = useState("");
   const [uploadBusy, setUploadBusy] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [previewFile, setPreviewFile] = useState<FileRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [renameTarget, setRenameTarget] = useState<FolderRow | null>(null);
@@ -262,8 +265,7 @@ export function FileLibrary({
     });
   }
 
-  async function uploadPdf(f: File) {
-    setUploadBusy(true);
+  async function putFileToStorage(f: File): Promise<boolean> {
     const toastId = toast.loading(`Preparing upload: ${f.name}`);
     try {
       const prep = await fetch("/api/storage/upload-url", {
@@ -279,7 +281,7 @@ export function FileLibrary({
       if (!prep.ok) {
         const j = (await prep.json().catch(() => ({}))) as { error?: string };
         toast.error(j.error ?? "Upload not allowed", { id: toastId });
-        return;
+        return false;
       }
       const { presignedUrl } = (await prep.json()) as { presignedUrl: string };
 
@@ -308,15 +310,47 @@ export function FileLibrary({
       });
 
       toast.success(`Uploaded ${f.name}`, { id: toastId });
-      await invalidateStorage();
+      return true;
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Upload to storage failed";
       toast.error(message, { id: toastId });
-    } finally {
-      setUploadBusy(false);
+      return false;
     }
   }
+
+  async function uploadStagedFiles() {
+    if (!stagedFiles.length) return;
+    setUploadBusy(true);
+    try {
+      for (const f of stagedFiles) {
+        await putFileToStorage(f);
+      }
+      await invalidateStorage();
+    } finally {
+      setUploadBusy(false);
+      setStagedFiles([]);
+      setUploadDialogOpen(false);
+    }
+  }
+
+  const onDrop = useCallback((accepted: File[]) => {
+    setStagedFiles((prev) => {
+      const map = new Map(
+        prev.map((f) => [`${f.name}:${f.size}:${f.lastModified}`, f]),
+      );
+      for (const f of accepted) {
+        map.set(`${f.name}:${f.size}:${f.lastModified}`, f);
+      }
+      return [...map.values()];
+    });
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    multiple: true,
+    noKeyboard: true,
+  });
 
   async function signOut() {
     await authClient.signOut();
@@ -406,6 +440,84 @@ export function FileLibrary({
               disabled={renameFolderMut.isPending}
             >
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={uploadDialogOpen}
+        onOpenChange={(open) => {
+          setUploadDialogOpen(open);
+          if (!open) setStagedFiles([]);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Upload files</DialogTitle>
+            <DialogDescription>
+              Drag and drop files here or click to browse. Uploads go into{" "}
+              <span className="font-medium text-foreground">
+                {crumbs[crumbs.length - 1]?.label ?? "Library"}
+              </span>
+              .
+            </DialogDescription>
+          </DialogHeader>
+          <div
+            {...getRootProps()}
+            className={cn(
+              "cursor-pointer rounded-2xl border-2 border-dashed px-6 py-12 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              isDragActive
+                ? "border-primary bg-primary/5"
+                : "border-border bg-muted/30 hover:bg-muted/50",
+            )}
+          >
+            <input {...getInputProps()} />
+            <Upload className="mx-auto size-10 text-muted-foreground mb-3" />
+            <p className="text-sm font-medium">
+              {isDragActive ? "Drop files here" : "Drop files or click to select"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Multiple files supported · same rules as before (size & type checks
+              on the server)
+            </p>
+          </div>
+          {stagedFiles.length > 0 ? (
+            <ul className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border/60 px-3 py-2 text-sm">
+              {stagedFiles.map((f) => (
+                <li
+                  key={`${f.name}-${f.size}-${f.lastModified}`}
+                  className="flex items-center justify-between gap-2 py-1"
+                >
+                  <span className="truncate">{f.name}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {(f.size / 1024).toFixed(1)} KB
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setUploadDialogOpen(false);
+                setStagedFiles([]);
+              }}
+              disabled={uploadBusy}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={uploadBusy || stagedFiles.length === 0}
+              onClick={() => void uploadStagedFiles()}
+            >
+              {uploadBusy
+                ? "Uploading…"
+                : stagedFiles.length
+                  ? `Upload ${stagedFiles.length} file${stagedFiles.length === 1 ? "" : "s"}`
+                  : "Upload"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -502,25 +614,18 @@ export function FileLibrary({
             <Button type="submit" size="sm" disabled={busy}>
               Create
             </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (file) void uploadPdf(file);
-              }}
-            />
             <Button
               type="button"
               size="sm"
               variant="secondary"
               disabled={busy}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                setStagedFiles([]);
+                setUploadDialogOpen(true);
+              }}
             >
               <Upload className="size-4 mr-1" />
-              Upload file
+              Upload files
             </Button>
           </form>
         </section>

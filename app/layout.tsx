@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Files — shared library",
+  title: "Files - Shared Library",
   description:
     "Invite-only access to a private file library with folders, previews, and role-aware uploads.",
 };
