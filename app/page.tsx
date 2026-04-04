@@ -1,10 +1,7 @@
-import { Uploader } from "@/components/web/Uploader";
+import { getServerSession } from "@/lib/session";
+import { redirect } from "next/navigation";
 
-export default function Home() {
-  return (
-    <div className="max-w-2xl mx-auto flex min-h-screen flex-col items-center justify-center ">
-      <h1 className="text-4xl font-bold pb-10">Upload your Files with S3 📂</h1>
-      <Uploader />
-    </div>
-  );
+export default async function Home() {
+  const session = await getServerSession();
+  redirect(session?.user ? "/files" : "/login");
 }
