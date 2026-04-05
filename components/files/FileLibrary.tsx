@@ -4,9 +4,11 @@ import {
   createFolderAction,
   deleteFileAction,
   deleteFolderAction,
+  getFolderBreadcrumbsAction,
   listStorageAction,
   renameFolderAction,
 } from "@/lib/actions/storage";
+import { folderHref } from "@/lib/files-url";
 import { generateInvitePhraseAction } from "@/lib/actions/invite";
 import { authClient } from "@/lib/auth-client";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -45,6 +47,7 @@ import {
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
@@ -68,17 +71,18 @@ export function FileLibrary({
   userName,
   userImage,
   isAdmin,
+  folderId = null,
 }: {
   userId: string;
   userName: string;
   userImage?: string | null;
   isAdmin: boolean;
+  folderId?: string | null;
 }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
-  const [crumbs, setCrumbs] = useState<Crumb[]>([
-    { id: null, label: "Library" },
-  ]);
-  const parentId = crumbs[crumbs.length - 1]?.id ?? null;
+  /** Directory whose contents we list (URL segment). */
+  const parentId = folderId;
 
   const [folderName, setFolderName] = useState("");
   const [uploadBusy, setUploadBusy] = useState(false);
@@ -95,28 +99,53 @@ export function FileLibrary({
 
   const {
     data: storageData,
-    isPending: loading,
+    isPending: storageLoading,
     error: storageError,
   } = useQuery({
     queryKey: ["storage", parentId],
     queryFn: () => listStorageAction(parentId),
   });
 
+  const {
+    data: crumbsData,
+    isPending: crumbsLoading,
+    error: crumbsError,
+  } = useQuery({
+    queryKey: ["storage-breadcrumbs", folderId],
+    queryFn: () => getFolderBreadcrumbsAction(folderId),
+    enabled: folderId != null,
+  });
+
+  const crumbs: Crumb[] =
+    folderId == null
+      ? [{ id: null, label: "Library" }]
+      : (crumbsData?.crumbs ?? [
+          { id: null, label: "Library" },
+          { id: folderId, label: "…" },
+        ]);
+
+  const treeLoading =
+    storageLoading || (folderId != null && crumbsLoading);
+
   const folders = storageData?.folders ?? [];
   const files = storageData?.files ?? [];
 
   useEffect(() => {
-    if (storageError) {
-      toast.error(
-        storageError instanceof Error
-          ? storageError.message
-          : "Could not load library",
-      );
+    const err = storageError ?? crumbsError;
+    if (!err) return;
+    const msg = err instanceof Error ? err.message : "";
+    if (/folder not found/i.test(msg)) {
+      toast.error("Folder not found");
+      router.replace("/files");
+      return;
     }
-  }, [storageError]);
+    toast.error(msg || "Could not load library");
+  }, [storageError, crumbsError, router]);
 
-  const invalidateStorage = () =>
-    queryClient.invalidateQueries({ queryKey: ["storage", parentId] });
+  const invalidateStorage = () => {
+    void queryClient.invalidateQueries({ queryKey: ["storage"] });
+    void queryClient.invalidateQueries({ queryKey: ["storage-breadcrumbs"] });
+  };
 
   const createFolderMut = useMutation({
     mutationFn: (name: string) =>
@@ -139,16 +168,8 @@ export function FileLibrary({
   const renameFolderMut = useMutation({
     mutationFn: (input: { folderId: string; name: string }) =>
       renameFolderAction(input),
-    onSuccess: (_data, variables) => {
+    onSuccess: () => {
       void invalidateStorage();
-      const trimmed = variables.name.trim();
-      setCrumbs((c) =>
-        c.map((crumb) =>
-          crumb.id === variables.folderId
-            ? { ...crumb, label: trimmed }
-            : crumb,
-        ),
-      );
     },
   });
 
@@ -164,14 +185,6 @@ export function FileLibrary({
     renameFolderMut.isPending ||
     inviteMut.isPending ||
     uploadBusy;
-
-  function goCrumb(index: number) {
-    setCrumbs((c) => c.slice(0, index + 1));
-  }
-
-  function enterFolder(f: FolderRow) {
-    setCrumbs((c) => [...c, { id: f.id, label: f.name }]);
-  }
 
   function createFolder(e: React.FormEvent) {
     e.preventDefault();
@@ -580,22 +593,27 @@ export function FileLibrary({
       </header>
 
       <nav className="flex flex-wrap gap-1 text-sm py-4 text-muted-foreground">
-        {crumbs.map((c, i) => (
-          <span key={`${c.id ?? "root"}-${i}`} className="flex items-center gap-1">
-            {i > 0 && <span className="opacity-50">/</span>}
-            <button
-              type="button"
-              className={
-                i === crumbs.length - 1
-                  ? "text-foreground font-medium"
-                  : "hover:text-foreground underline-offset-2 hover:underline"
-              }
-              onClick={() => goCrumb(i)}
+        {crumbs.map((c, i) => {
+          const last = i === crumbs.length - 1;
+          return (
+            <span
+              key={`${c.id ?? "root"}-${i}`}
+              className="flex items-center gap-1"
             >
-              {c.label}
-            </button>
-          </span>
-        ))}
+              {i > 0 && <span className="opacity-50">/</span>}
+              {last ? (
+                <span className="text-foreground font-medium">{c.label}</span>
+              ) : (
+                <Link
+                  href={folderHref(c.id)}
+                  className="hover:text-foreground underline-offset-2 hover:underline"
+                >
+                  {c.label}
+                </Link>
+              )}
+            </span>
+          );
+        })}
       </nav>
 
       {isAdmin && (
@@ -636,7 +654,7 @@ export function FileLibrary({
         </section>
       )}
 
-      {loading ? (
+      {treeLoading ? (
         <div className="flex justify-center py-16 text-muted-foreground">
           <Loader2 className="size-6 animate-spin" />
         </div>
@@ -647,14 +665,14 @@ export function FileLibrary({
               key={f.id}
               className="flex items-center justify-between gap-3 rounded-md px-2 py-2 hover:bg-muted/50"
             >
-              <button
-                type="button"
-                className="flex items-center gap-2 min-w-0 text-left flex-1"
-                onClick={() => enterFolder(f)}
+              <Link
+                href={folderHref(f.id)}
+                prefetch
+                className="flex items-center gap-2 min-w-0 text-left flex-1 outline-none rounded-sm focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Folder className="size-4 shrink-0 text-amber-600/80" />
                 <span className="truncate">{f.name}</span>
-              </button>
+              </Link>
               {isAdmin && (
                 <div className="flex shrink-0 items-center gap-0.5">
                   <Button

@@ -102,6 +102,53 @@ export async function listStorageAction(
   }
 }
 
+export type StorageBreadcrumb = { id: string | null; label: string };
+
+export async function getFolderBreadcrumbsAction(
+  folderId: string | null,
+): Promise<{ crumbs: StorageBreadcrumb[] }> {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) throw new Error("Unauthorized");
+
+    const root = [{ id: null, label: "Library" }] as StorageBreadcrumb[];
+    if (folderId == null || folderId === "") {
+      return { crumbs: root };
+    }
+
+    async function folderMetaById(id: string) {
+      const rows = await db
+        .select({
+          id: storageFolder.id,
+          name: storageFolder.name,
+          parentId: storageFolder.parentId,
+        })
+        .from(storageFolder)
+        .where(eq(storageFolder.id, id))
+        .limit(1);
+      return rows[0];
+    }
+
+    const chain: StorageBreadcrumb[] = [];
+    let currentId: string | null = folderId;
+    const seen = new Set<string>();
+    for (let depth = 0; currentId != null && depth < 64; depth += 1) {
+      if (seen.has(currentId)) throw new Error("Folder not found");
+      seen.add(currentId);
+      const row = await folderMetaById(currentId);
+      if (!row) throw new Error("Folder not found");
+      chain.unshift({ id: row.id, label: row.name });
+      currentId = row.parentId;
+    }
+
+    if (currentId !== null) throw new Error("Folder not found");
+
+    return { crumbs: [...root, ...chain] };
+  } catch (e) {
+    throw normalizeActionError(e);
+  }
+}
+
 const createFolderBody = z.object({
   name: z.string().min(1).max(200),
   parentId: z.string().nullable().optional(),
