@@ -2,7 +2,6 @@
 
 import { getAdminAnalyticsAction } from "@/lib/actions/analytics";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { toast } from "sonner";
@@ -58,11 +57,16 @@ export function AdminAnalyticsPanel() {
   }, [error]);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-10 space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6 sm:py-10">
+      <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-border/80 bg-card/50 p-5 shadow-sm ring-1 ring-black/[0.04] dark:bg-card/30 dark:ring-white/[0.06] sm:p-6">
         <div>
-          <h1 className="text-lg font-medium">Analytics</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Administration
+          </p>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight">
+            Analytics
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             {isPending
               ? "Loading…"
               : data
@@ -70,29 +74,15 @@ export function AdminAnalyticsPanel() {
                 : "—"}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={isPending || isFetching}
-            onClick={() => void refetch()}
-          >
-            {isFetching ? "Refreshing…" : "Refresh"}
-          </Button>
-          <Link
-            href="/admin/users"
-            className="text-sm text-muted-foreground underline-offset-2 hover:underline"
-          >
-            Users
-          </Link>
-          <Link
-            href="/"
-            className="text-sm text-muted-foreground underline-offset-2 hover:underline"
-          >
-            Files
-          </Link>
-        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={isPending || isFetching}
+          onClick={() => void refetch()}
+        >
+          {isFetching ? "Refreshing…" : "Refresh"}
+        </Button>
       </div>
 
       {isPending || !data ? (

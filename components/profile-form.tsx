@@ -10,8 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UserAvatar } from "@/components/user-avatar";
-import { isAdminUser } from "@/lib/auth-user";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
@@ -30,8 +28,6 @@ export function ProfileForm() {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const user = session?.user;
-  const admin = isAdminUser(user);
-
   const updateNameMut = useMutation({
     mutationFn: updateProfileNameAction,
     onSuccess: async () => {
@@ -155,34 +151,13 @@ export function ProfileForm() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-10 space-y-10">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-lg font-medium">Profile</h1>
-        <div className="flex items-center gap-3 text-sm">
-          {admin ? (
-            <>
-              <Link
-                href="/admin/analytics"
-                className="text-muted-foreground underline-offset-2 hover:underline"
-              >
-                Analytics
-              </Link>
-              <Link
-                href="/admin/users"
-                className="text-muted-foreground underline-offset-2 hover:underline"
-              >
-                Users
-              </Link>
-            </>
-          ) : null}
-          <Link
-            href="/"
-            className="text-muted-foreground underline-offset-2 hover:underline"
-          >
-            Files
-          </Link>
-        </div>
-      </div>
+    <div className="mx-auto max-w-md space-y-10 px-4 py-8 sm:py-10">
+      <header>
+        <h1 className="text-xl font-semibold tracking-tight">Profile</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Account details and security
+        </p>
+      </header>
 
       <section className="space-y-4">
         <div className="flex items-center gap-4">

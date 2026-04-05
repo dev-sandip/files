@@ -26,7 +26,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import Link from "next/link";
 import { MoreHorizontal } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -103,7 +102,7 @@ export function AdminUsersPanel({ currentUserId }: { currentUserId: string }) {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-10 space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6 px-4 py-8 sm:px-6 sm:py-10">
       <Dialog
         open={banTarget !== null}
         onOpenChange={(open) => {
@@ -148,33 +147,20 @@ export function AdminUsersPanel({ currentUserId }: { currentUserId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-lg font-medium">Users</h1>
-          <p className="text-sm text-muted-foreground">
-            {loading ? "…" : `${total} total`} · roles and bans
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Link
-            href="/admin/analytics"
-            className="text-sm text-muted-foreground underline-offset-2 hover:underline"
-          >
-            Analytics
-          </Link>
-          <Link
-            href="/"
-            className="text-sm text-muted-foreground underline-offset-2 hover:underline"
-          >
-            Back to files
-          </Link>
-        </div>
+      <div className="mb-8 rounded-2xl border border-border/80 bg-card/50 p-5 shadow-sm ring-1 ring-black/[0.04] dark:bg-card/30 dark:ring-white/[0.06] sm:p-6">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          Administration
+        </p>
+        <h1 className="mt-1 text-xl font-semibold tracking-tight">Users</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {loading ? "…" : `${total} total`} · roles and bans
+        </p>
       </div>
 
       {loading ? (
         <p className="text-sm text-muted-foreground py-12">Loading users…</p>
       ) : (
-        <ul className="divide-y divide-border/60 rounded-lg border border-border/60">
+        <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/70 bg-card/30 shadow-sm dark:bg-card/15">
           {users.map((u) => {
             const self = u.id === currentUserId;
             const isAdminRole = (u.role ?? "user") === "admin";

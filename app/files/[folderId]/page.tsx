@@ -17,12 +17,6 @@ export default async function FilesFolderPage({
   if (!folderId) redirect("/");
 
   return (
-    <FileLibrary
-      userId={session.user.id}
-      userName={session.user.name}
-      userImage={session.user.image}
-      isAdmin={isAdminUser(session.user)}
-      folderId={folderId}
-    />
+    <FileLibrary isAdmin={isAdminUser(session.user)} folderId={folderId} />
   );
 }

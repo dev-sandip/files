@@ -37,10 +37,10 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4">
-      <div className="w-full max-w-sm space-y-6">
+    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col items-center justify-center px-4 py-12">
+      <div className="w-full max-w-sm space-y-6 rounded-2xl border border-border/80 bg-card/50 p-6 shadow-lg ring-1 ring-black/[0.04] backdrop-blur-sm dark:bg-card/35 dark:ring-white/[0.06] sm:p-8">
         <div>
-          <h1 className="text-xl font-medium tracking-tight">Register</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Register</h1>
           <p className="text-sm text-muted-foreground mt-1">
             You need the invitation sentence from an administrator (or the same
             phrase set in <code className="text-xs">SIGNUP_PASSPHRASE</code>{" "}

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Outfit } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { SiteHeader } from "@/components/site-header";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
-import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { cn } from "@/lib/utils";
 
 const outfit = Outfit({subsets:['latin'],variable:'--font-sans'});
@@ -42,10 +42,10 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <QueryProvider>
-            <div className="fixed top-4 right-4">
-              <ThemeToggle />
+            <div className="flex min-h-screen flex-col">
+              <SiteHeader />
+              <div className="flex-1">{children}</div>
             </div>
-            {children}
             <Toaster richColors closeButton />
           </QueryProvider>
         </ThemeProvider>

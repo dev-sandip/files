@@ -17,8 +17,6 @@ import type {
   StorageFolderRow,
 } from "@/lib/actions/storage";
 import { folderHref } from "@/lib/files-url";
-import { generateInvitePhraseAction } from "@/lib/actions/invite";
-import { authClient } from "@/lib/auth-client";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -56,14 +54,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { StorageSearch } from "@/components/files/storage-search";
 import { FilePreviewPanel } from "@/components/files/file-preview-panel";
-import { UserAvatar } from "@/components/user-avatar";
 import {
   ExternalLink,
   FileText,
   Folder,
   Info,
   Loader2,
-  LogOut,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -330,15 +326,9 @@ function FileRowActionItems({
 }
 
 export function FileLibrary({
-  userId,
-  userName,
-  userImage,
   isAdmin,
   folderId = null,
 }: {
-  userId: string;
-  userName: string;
-  userImage?: string | null;
   isAdmin: boolean;
   folderId?: string | null;
 }) {
@@ -356,10 +346,6 @@ export function FileLibrary({
   const [renameTarget, setRenameTarget] = useState<FolderRow | null>(null);
   const [renameInput, setRenameInput] = useState("");
   const [infoTarget, setInfoTarget] = useState<InfoTarget | null>(null);
-  const { data: sessionData } = authClient.useSession();
-  const liveUser = sessionData?.user;
-  const displayName = liveUser?.name ?? userName;
-  const displayImage = liveUser?.image ?? userImage ?? null;
 
   const {
     data: storageData,
@@ -452,17 +438,11 @@ export function FileLibrary({
     },
   });
 
-  const inviteMut = useMutation({
-    mutationFn: generateInvitePhraseAction,
-    onError: () => toast.error("Could not generate phrase"),
-  });
-
   const busy =
     createFolderMut.isPending ||
     deleteFolderMut.isPending ||
     deleteFileMut.isPending ||
     renameFolderMut.isPending ||
-    inviteMut.isPending ||
     uploadBusy;
 
   function createFolder(e: React.FormEvent) {
@@ -480,33 +460,6 @@ export function FileLibrary({
           { id: toastId },
         );
       },
-    });
-  }
-
-  function generateInvite() {
-    const toastId = toast.loading("Generating invitation phrase…");
-    inviteMut.mutate(undefined, {
-      onSuccess: (data) => {
-        const expHint = data.expiresAt
-          ? `Valid until ${new Date(data.expiresAt).toLocaleString()}`
-          : undefined;
-        void (async () => {
-          try {
-            await navigator.clipboard.writeText(data.phrase);
-            toast.success("Copied invitation phrase to clipboard", {
-              id: toastId,
-              description: expHint,
-            });
-          } catch {
-            toast.message(data.message, {
-              id: toastId,
-              description: [data.phrase, expHint].filter(Boolean).join(" · "),
-            });
-          }
-        })();
-      },
-      onError: () =>
-        toast.error("Could not generate phrase", { id: toastId }),
     });
   }
 
@@ -644,13 +597,8 @@ export function FileLibrary({
     noKeyboard: true,
   });
 
-  async function signOut() {
-    await authClient.signOut();
-    window.location.href = "/login";
-  }
-
   return (
-    <div className="min-h-screen px-6 py-10 max-w-4xl mx-auto">
+    <div className="mx-auto min-h-0 max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
@@ -852,87 +800,70 @@ export function FileLibrary({
         file={previewFile}
         onClose={() => setPreviewFile(null)}
       />
-      <header className="flex flex-wrap items-center justify-between gap-4 pb-8 border-b border-border/60">
-        <div className="flex items-center gap-3 min-w-0">
-          <UserAvatar
-            name={displayName}
-            image={displayImage}
-            userId={liveUser?.id ?? userId}
-            size={44}
-          />
+      <section
+        className="mb-8 space-y-4 rounded-2xl border border-border/80 bg-card/50 p-4 shadow-sm ring-1 ring-black/[0.04] dark:bg-card/30 dark:ring-white/[0.06] sm:p-5"
+        aria-label="Library location and search"
+      >
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border/60 pb-4">
           <div className="min-w-0">
-            <h1 className="text-lg font-medium tracking-tight">Files</h1>
-            <p className="text-sm text-muted-foreground truncate">
-              {displayName}
-              {isAdmin ? " · admin" : " · view only"}
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Location
             </p>
+            <nav
+              className="mt-1.5 flex flex-wrap gap-1 text-sm text-muted-foreground"
+              aria-label="Folder path"
+            >
+              {crumbs.map((c, i) => {
+                const last = i === crumbs.length - 1;
+                return (
+                  <span
+                    key={`${c.id ?? "root"}-${i}`}
+                    className="flex items-center gap-1"
+                  >
+                    {i > 0 && (
+                      <span className="select-none text-border" aria-hidden>
+                        /
+                      </span>
+                    )}
+                    {last ? (
+                      <span className="font-medium text-foreground">
+                        {c.label}
+                      </span>
+                    ) : (
+                      <Link
+                        href={folderHref(c.id)}
+                        className="rounded-md text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                      >
+                        {c.label}
+                      </Link>
+                    )}
+                  </span>
+                );
+              })}
+            </nav>
           </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/profile">Profile</Link>
-          </Button>
-          {isAdmin ? (
-            <>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/admin/analytics">Analytics</Link>
-              </Button>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/admin/users">Users</Link>
-              </Button>
-            </>
-          ) : null}
-          {isAdmin && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={() => generateInvite()}
-            >
-              New invite phrase
-            </Button>
-          )}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => void signOut()}
+          <span
+            className={cn(
+              "shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium",
+              isAdmin
+                ? "border-primary/25 bg-primary/10 text-primary"
+                : "border-border/80 bg-muted/50 text-muted-foreground",
+            )}
           >
-            <LogOut className="size-4 mr-1" />
-            Sign out
-          </Button>
+            {isAdmin ? "You can upload & manage" : "View only"}
+          </span>
         </div>
-      </header>
-
-      <StorageSearch className="w-full max-w-xl pb-2" />
-
-      <nav className="flex flex-wrap gap-1 text-sm py-4 text-muted-foreground">
-        {crumbs.map((c, i) => {
-          const last = i === crumbs.length - 1;
-          return (
-            <span
-              key={`${c.id ?? "root"}-${i}`}
-              className="flex items-center gap-1"
-            >
-              {i > 0 && <span className="opacity-50">/</span>}
-              {last ? (
-                <span className="text-foreground font-medium">{c.label}</span>
-              ) : (
-                <Link
-                  href={folderHref(c.id)}
-                  className="hover:text-foreground underline-offset-2 hover:underline"
-                >
-                  {c.label}
-                </Link>
-              )}
-            </span>
-          );
-        })}
-      </nav>
+        <StorageSearch className="w-full max-w-xl" />
+      </section>
 
       {isAdmin && (
-        <section className="space-y-4 pb-8">
+        <section
+          className="mb-8 rounded-2xl border border-dashed border-primary/20 bg-gradient-to-br from-primary/[0.04] to-transparent p-4 dark:from-primary/[0.07] sm:p-5"
+          aria-label="Folder actions"
+        >
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+            Manage this folder
+          </p>
           <form
             onSubmit={(e) => void createFolder(e)}
             className="flex flex-wrap items-end gap-2"
@@ -974,7 +905,7 @@ export function FileLibrary({
           <Loader2 className="size-6 animate-spin" />
         </div>
       ) : (
-        <ul className="space-y-1">
+        <ul className="space-y-0.5 rounded-2xl border border-border/70 bg-card/40 p-1.5 shadow-sm dark:bg-card/20 sm:p-2">
           {folders.map((f) => (
             <li
               key={f.id}

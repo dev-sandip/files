@@ -21,19 +21,22 @@ const features = [
 
 export function LandingPage() {
   return (
-    <div className="relative min-h-screen bg-background text-foreground">
-      <main className="relative mx-auto flex min-h-screen max-w-[900px] flex-col px-6 pb-16 pt-[18vh] sm:px-12">
+    <div className="relative min-h-0 flex-1 bg-background text-foreground">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-[min(48vh,420px)] bg-[radial-gradient(ellipse_90%_70%_at_50%_-10%,color-mix(in_oklch,var(--primary)_14%,transparent),transparent_65%)]"
+      />
+      <main className="relative mx-auto flex min-h-0 max-w-6xl flex-col px-4 pb-20 pt-12 sm:px-6 sm:pt-16 lg:pt-20">
 
-        {/* Hero */}
-        <header className="mb-24">
-          <h1 className="mb-6 max-w-[640px] text-[clamp(36px,5.5vw,58px)] font-semibold leading-[1.07] tracking-tight">
+        <header className="mb-20 max-w-2xl">
+          <h1 className="mb-6 text-[clamp(2rem,4.5vw,3.25rem)] font-semibold leading-[1.08] tracking-tight">
             One place for shared files.{" "}
             <span className="font-normal text-muted-foreground">
               Organized, controlled, easy to open.
             </span>
           </h1>
 
-          <p className="mb-10 max-w-[400px] text-base leading-relaxed text-muted-foreground">
+          <p className="mb-10 max-w-md text-base leading-relaxed text-muted-foreground sm:text-lg">
             Sign in to browse the library. Admins manage folders and uploads;
             viewers get a calm, read-only experience.
           </p>
@@ -41,7 +44,7 @@ export function LandingPage() {
           <div className="flex flex-wrap items-center gap-3">
             <Link
               href="/login"
-              className="inline-flex h-10 items-center gap-2 rounded-full px-6 text-sm font-medium transition-opacity hover:opacity-85"
+              className="inline-flex h-11 items-center gap-2 rounded-full px-7 text-sm font-medium shadow-md transition-[transform,box-shadow] hover:shadow-lg active:scale-[0.98]"
               style={{ background: "#2a6b4a", color: "#ffffff" }}
             >
               Sign in
@@ -54,51 +57,49 @@ export function LandingPage() {
                 strokeWidth="1.7"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                aria-hidden
               >
                 <path d="M2 6.5h9M7.5 2.5l4 4-4 4" />
               </svg>
             </Link>
             <Link
               href="/register"
-              className="inline-flex h-10 items-center rounded-full border border-border px-6 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+              className="inline-flex h-11 items-center rounded-full border border-border/90 bg-card/60 px-7 text-sm font-medium shadow-sm backdrop-blur-sm transition-colors hover:bg-accent/80"
             >
               Register with invite
             </Link>
           </div>
         </header>
 
-        {/* Divider */}
-        <div className="mb-10 h-px bg-border" />
-
-        {/* Features */}
-        <section className="mb-auto grid gap-px bg-border sm:grid-cols-3">
+        <section className="mb-auto grid gap-4 sm:grid-cols-3">
           {features.map(({ icon: Icon, title, text }) => (
             <div
               key={title}
-              className="flex flex-col gap-4 bg-background px-7 py-8 transition-colors hover:bg-accent/40"
+              className="group flex flex-col gap-4 rounded-2xl border border-border/70 bg-card/40 p-6 shadow-sm ring-1 ring-black/[0.03] transition-[box-shadow,background] hover:bg-card/60 hover:shadow-md dark:bg-card/25 dark:ring-white/[0.05] dark:hover:bg-card/35"
             >
               <div
-                className="flex size-9 items-center justify-center rounded-lg"
-                style={{ background: "#e6f0eb", border: "1px solid #c2ddd0" }}
+                className="flex size-10 items-center justify-center rounded-xl ring-1 transition-transform group-hover:scale-[1.02]"
+                style={{
+                  background: "#e6f0eb",
+                  color: "#2a6b4a",
+                  // ringColor: "#c2ddd0",
+                }}
               >
-                <Icon
-                  className="size-[17px]"
-                  strokeWidth={1.6}
-                  style={{ color: "#2a6b4a" }}
-                />
+                <Icon className="size-[18px]" strokeWidth={1.65} aria-hidden />
               </div>
               <div>
-                <p className="mb-1.5 text-sm font-medium">{title}</p>
-                <p className="text-sm leading-relaxed text-muted-foreground">{text}</p>
+                <p className="mb-1.5 font-medium">{title}</p>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  {text}
+                </p>
               </div>
             </div>
           ))}
         </section>
 
-        {/* Footer */}
-        <footer className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-8">
+        <footer className="mt-20 flex flex-wrap items-center justify-between gap-4 border-t border-border/80 pt-10">
           <p className="text-sm font-medium">Sandip Sapkota</p>
-          <div className="flex gap-5">
+          <div className="flex flex-wrap gap-6">
             <a
               href="mailto:contact@thesandip.dev"
               className="text-sm text-muted-foreground transition-colors hover:text-foreground"
