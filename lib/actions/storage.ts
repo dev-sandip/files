@@ -2,12 +2,14 @@
 
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { db } from "@/db";
+import { user } from "@/db/schema/auth";
 import { storageFile, storageFolder } from "@/db/schema/storage";
 import { normalizeActionError } from "@/lib/action-utils";
 import { auth } from "@/lib/auth";
 import { isAdminUser } from "@/lib/auth-user";
 import { getBucket, S3 } from "@/lib/S3Client";
-import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, ne } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { headers } from "next/headers";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
@@ -15,6 +17,21 @@ import { z } from "zod";
 function toIso(d: Date | string | null | undefined): string {
   if (d == null) return new Date(0).toISOString();
   return d instanceof Date ? d.toISOString() : String(d);
+}
+
+const parentFolderAlias = alias(storageFolder, "storage_parent_folder");
+
+async function loadStorageFolderMeta(id: string) {
+  const rows = await db
+    .select({
+      id: storageFolder.id,
+      name: storageFolder.name,
+      parentId: storageFolder.parentId,
+    })
+    .from(storageFolder)
+    .where(eq(storageFolder.id, id))
+    .limit(1);
+  return rows[0];
 }
 
 export type StorageFolderRow = {
@@ -116,26 +133,13 @@ export async function getFolderBreadcrumbsAction(
       return { crumbs: root };
     }
 
-    async function folderMetaById(id: string) {
-      const rows = await db
-        .select({
-          id: storageFolder.id,
-          name: storageFolder.name,
-          parentId: storageFolder.parentId,
-        })
-        .from(storageFolder)
-        .where(eq(storageFolder.id, id))
-        .limit(1);
-      return rows[0];
-    }
-
     const chain: StorageBreadcrumb[] = [];
     let currentId: string | null = folderId;
     const seen = new Set<string>();
     for (let depth = 0; currentId != null && depth < 64; depth += 1) {
       if (seen.has(currentId)) throw new Error("Folder not found");
       seen.add(currentId);
-      const row = await folderMetaById(currentId);
+      const row = await loadStorageFolderMeta(currentId);
       if (!row) throw new Error("Folder not found");
       chain.unshift({ id: row.id, label: row.name });
       currentId = row.parentId;
@@ -357,6 +361,152 @@ export async function deleteFileAction(id: string) {
     );
     await db.delete(storageFile).where(eq(storageFile.id, id));
     return { ok: true as const };
+  } catch (e) {
+    throw normalizeActionError(e);
+  }
+}
+
+export type StorageFileInfo = {
+  id: string;
+  name: string;
+  s3Key: string;
+  mimeType: string;
+  sizeBytes: number;
+  folderId: string | null;
+  createdAt: string;
+  uploadedBy: { id: string; name: string; email: string };
+  containingFolder: { id: string; name: string } | null;
+};
+
+export async function getStorageFileInfoAction(
+  fileId: string,
+): Promise<StorageFileInfo> {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) throw new Error("Unauthorized");
+
+    const rows = await db
+      .select({
+        id: storageFile.id,
+        name: storageFile.name,
+        s3Key: storageFile.s3Key,
+        mimeType: storageFile.mimeType,
+        sizeBytes: storageFile.sizeBytes,
+        folderId: storageFile.folderId,
+        createdAt: storageFile.createdAt,
+        uploaderId: user.id,
+        uploaderName: user.name,
+        uploaderEmail: user.email,
+        folderName: storageFolder.name,
+      })
+      .from(storageFile)
+      .innerJoin(user, eq(user.id, storageFile.uploadedByUserId))
+      .leftJoin(storageFolder, eq(storageFolder.id, storageFile.folderId))
+      .where(eq(storageFile.id, fileId))
+      .limit(1);
+
+    const r = rows[0];
+    if (!r) throw new Error("Not found");
+
+    return {
+      id: r.id,
+      name: r.name,
+      s3Key: r.s3Key,
+      mimeType: r.mimeType ?? "",
+      sizeBytes: r.sizeBytes,
+      folderId: r.folderId,
+      createdAt: toIso(r.createdAt),
+      uploadedBy: {
+        id: r.uploaderId,
+        name: r.uploaderName,
+        email: r.uploaderEmail,
+      },
+      containingFolder:
+        r.folderId && r.folderName
+          ? { id: r.folderId, name: r.folderName }
+          : null,
+    };
+  } catch (e) {
+    throw normalizeActionError(e);
+  }
+}
+
+export type StorageFolderInfo = {
+  id: string;
+  name: string;
+  parentId: string | null;
+  createdAt: string;
+  path: string;
+  createdBy: { id: string; name: string; email: string };
+  parent: { id: string; name: string } | null;
+  stats: { files: number; subfolders: number };
+};
+
+export async function getStorageFolderInfoAction(
+  folderId: string,
+): Promise<StorageFolderInfo> {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) throw new Error("Unauthorized");
+
+    const rows = await db
+      .select({
+        id: storageFolder.id,
+        name: storageFolder.name,
+        parentId: storageFolder.parentId,
+        createdAt: storageFolder.createdAt,
+        creatorId: user.id,
+        creatorName: user.name,
+        creatorEmail: user.email,
+        parentFolderId: parentFolderAlias.id,
+        parentFolderName: parentFolderAlias.name,
+      })
+      .from(storageFolder)
+      .innerJoin(user, eq(user.id, storageFolder.createdByUserId))
+      .leftJoin(
+        parentFolderAlias,
+        eq(parentFolderAlias.id, storageFolder.parentId),
+      )
+      .where(eq(storageFolder.id, folderId))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) throw new Error("Not found");
+
+    const [
+      [{ files: fileCount }],
+      [{ subfolders: subfolderCount }],
+      { crumbs: pathCrumbs },
+    ] = await Promise.all([
+      db
+        .select({ files: count() })
+        .from(storageFile)
+        .where(eq(storageFile.folderId, folderId)),
+      db
+        .select({ subfolders: count() })
+        .from(storageFolder)
+        .where(eq(storageFolder.parentId, folderId)),
+      getFolderBreadcrumbsAction(folderId),
+    ]);
+    const path = pathCrumbs.map((c) => c.label).join(" / ");
+
+    return {
+      id: row.id,
+      name: row.name,
+      parentId: row.parentId,
+      createdAt: toIso(row.createdAt),
+      path,
+      createdBy: {
+        id: row.creatorId,
+        name: row.creatorName,
+        email: row.creatorEmail,
+      },
+      parent:
+        row.parentId && row.parentFolderId && row.parentFolderName
+          ? { id: row.parentFolderId, name: row.parentFolderName }
+          : null,
+      stats: { files: fileCount, subfolders: subfolderCount },
+    };
   } catch (e) {
     throw normalizeActionError(e);
   }

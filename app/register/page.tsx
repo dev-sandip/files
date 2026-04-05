@@ -32,7 +32,7 @@ export default function RegisterPage() {
       return;
     }
     toast.success("Account created");
-    router.push("/files");
+    router.push("/");
     router.refresh();
   }
 

@@ -176,7 +176,7 @@ export function ProfileForm() {
             </>
           ) : null}
           <Link
-            href="/files"
+            href="/"
             className="text-muted-foreground underline-offset-2 hover:underline"
           >
             Files

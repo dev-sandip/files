@@ -5,8 +5,16 @@ import {
   deleteFileAction,
   deleteFolderAction,
   getFolderBreadcrumbsAction,
+  getStorageFileInfoAction,
+  getStorageFolderInfoAction,
   listStorageAction,
   renameFolderAction,
+} from "@/lib/actions/storage";
+import type {
+  StorageFileInfo,
+  StorageFileRow,
+  StorageFolderInfo,
+  StorageFolderRow,
 } from "@/lib/actions/storage";
 import { folderHref } from "@/lib/files-url";
 import { generateInvitePhraseAction } from "@/lib/actions/invite";
@@ -32,12 +40,21 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { StorageSearch } from "@/components/files/storage-search";
 import { FilePreviewPanel } from "@/components/files/file-preview-panel";
 import { UserAvatar } from "@/components/user-avatar";
 import {
   ExternalLink,
   FileText,
   Folder,
+  Info,
   Loader2,
   LogOut,
   Pencil,
@@ -48,14 +65,9 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
-
-import type {
-  StorageFileRow,
-  StorageFolderRow,
-} from "@/lib/actions/storage";
 
 type Crumb = { id: string | null; label: string };
 
@@ -65,6 +77,112 @@ type FileRow = StorageFileRow;
 type DeleteTarget =
   | { kind: "folder"; id: string; label: string }
   | { kind: "file"; id: string; label: string };
+
+type InfoTarget =
+  | { kind: "folder"; id: string }
+  | { kind: "file"; id: string };
+
+function formatDetailBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "—";
+  if (n < 1024) return `${n} B`;
+  const u = ["KB", "MB", "GB", "TB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < u.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${u[i]}`;
+}
+
+function DetailRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid gap-1 border-b border-border/50 py-2.5 text-sm last:border-0 sm:grid-cols-[minmax(0,7.5rem)_1fr] sm:gap-4">
+      <div className="text-muted-foreground">{label}</div>
+      <div className="break-all text-xs text-foreground">{children}</div>
+    </div>
+  );
+}
+
+function FileInfoBody({ info }: { info: StorageFileInfo }) {
+  return (
+    <div className="space-y-0">
+      <DetailRow label="Name">{info.name}</DetailRow>
+      <DetailRow label="File ID">{info.id}</DetailRow>
+      <DetailRow label="MIME type">{info.mimeType}</DetailRow>
+      <DetailRow label="Size">{formatDetailBytes(info.sizeBytes)}</DetailRow>
+      <DetailRow label="S3 key">{info.s3Key}</DetailRow>
+      <DetailRow label="Uploaded">
+        {new Date(info.createdAt).toLocaleString()}
+      </DetailRow>
+      <DetailRow label="Uploaded by">
+        {info.uploadedBy.name} · {info.uploadedBy.email}
+        <span className="mt-1 block font-mono text-[10px] text-muted-foreground">
+          {info.uploadedBy.id}
+        </span>
+      </DetailRow>
+      <DetailRow label="Location">
+        {info.containingFolder ? (
+          <>
+            <Link
+              href={folderHref(info.folderId)}
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              {info.containingFolder.name}
+            </Link>
+            <span className="mt-1 block font-mono text-[10px] text-muted-foreground">
+              folder ID: {info.folderId}
+            </span>
+          </>
+        ) : (
+          "Library root"
+        )}
+      </DetailRow>
+    </div>
+  );
+}
+
+function FolderInfoBody({ info }: { info: StorageFolderInfo }) {
+  return (
+    <div className="space-y-0">
+      <DetailRow label="Name">{info.name}</DetailRow>
+      <DetailRow label="Folder ID">{info.id}</DetailRow>
+      <DetailRow label="Path">{info.path}</DetailRow>
+      <DetailRow label="Created">
+        {new Date(info.createdAt).toLocaleString()}
+      </DetailRow>
+      <DetailRow label="Created by">
+        {info.createdBy.name} · {info.createdBy.email}
+        <span className="mt-1 block font-mono text-[10px] text-muted-foreground">
+          {info.createdBy.id}
+        </span>
+      </DetailRow>
+      <DetailRow label="Parent">
+        {info.parent ? (
+          <Link
+            href={folderHref(info.parent.id)}
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            {info.parent.name}
+          </Link>
+        ) : (
+          "— (library root)"
+        )}
+      </DetailRow>
+      <DetailRow label="Contents">
+        {info.stats.files} file{info.stats.files === 1 ? "" : "s"} ·{" "}
+        {info.stats.subfolders} subfolder
+        {info.stats.subfolders === 1 ? "" : "s"}
+      </DetailRow>
+    </div>
+  );
+}
 
 export function FileLibrary({
   userId,
@@ -92,6 +210,7 @@ export function FileLibrary({
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [renameTarget, setRenameTarget] = useState<FolderRow | null>(null);
   const [renameInput, setRenameInput] = useState("");
+  const [infoTarget, setInfoTarget] = useState<InfoTarget | null>(null);
   const { data: sessionData } = authClient.useSession();
   const liveUser = sessionData?.user;
   const displayName = liveUser?.name ?? userName;
@@ -136,7 +255,7 @@ export function FileLibrary({
     const msg = err instanceof Error ? err.message : "";
     if (/folder not found/i.test(msg)) {
       toast.error("Folder not found");
-      router.replace("/files");
+      router.replace("/");
       return;
     }
     toast.error(msg || "Could not load library");
@@ -145,7 +264,22 @@ export function FileLibrary({
   const invalidateStorage = () => {
     void queryClient.invalidateQueries({ queryKey: ["storage"] });
     void queryClient.invalidateQueries({ queryKey: ["storage-breadcrumbs"] });
+    void queryClient.invalidateQueries({ queryKey: ["storage-search"] });
   };
+
+  const detailQuery = useQuery({
+    queryKey: ["storage-detail", infoTarget?.kind, infoTarget?.id],
+    queryFn: async () => {
+      if (!infoTarget) throw new Error("No selection");
+      if (infoTarget.kind === "file") {
+        const data = await getStorageFileInfoAction(infoTarget.id);
+        return { kind: "file" as const, data };
+      }
+      const data = await getStorageFolderInfoAction(infoTarget.id);
+      return { kind: "folder" as const, data };
+    },
+    enabled: infoTarget != null,
+  });
 
   const createFolderMut = useMutation({
     mutationFn: (name: string) =>
@@ -371,7 +505,7 @@ export function FileLibrary({
   }
 
   return (
-    <div className="min-h-screen px-6 py-10 max-w-3xl mx-auto">
+    <div className="min-h-screen px-6 py-10 max-w-4xl mx-auto">
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
@@ -455,6 +589,40 @@ export function FileLibrary({
               Save
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={infoTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setInfoTarget(null);
+        }}
+      >
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Details</DialogTitle>
+            <DialogDescription>
+              {infoTarget?.kind === "file"
+                ? "Metadata for this file."
+                : infoTarget?.kind === "folder"
+                  ? "Metadata for this folder."
+                  : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {detailQuery.isPending ? (
+            <div className="flex justify-center py-10 text-muted-foreground">
+              <Loader2 className="size-6 animate-spin" />
+            </div>
+          ) : detailQuery.error ? (
+            <p className="text-sm text-destructive py-4">
+              {detailQuery.error instanceof Error
+                ? detailQuery.error.message
+                : "Could not load details"}
+            </p>
+          ) : detailQuery.data?.kind === "file" ? (
+            <FileInfoBody info={detailQuery.data.data} />
+          ) : detailQuery.data?.kind === "folder" ? (
+            <FolderInfoBody info={detailQuery.data.data} />
+          ) : null}
         </DialogContent>
       </Dialog>
       <Dialog
@@ -592,6 +760,8 @@ export function FileLibrary({
         </div>
       </header>
 
+      <StorageSearch className="w-full max-w-xl pb-2" />
+
       <nav className="flex flex-wrap gap-1 text-sm py-4 text-muted-foreground">
         {crumbs.map((c, i) => {
           const last = i === crumbs.length - 1;
@@ -661,105 +831,115 @@ export function FileLibrary({
       ) : (
         <ul className="space-y-1">
           {folders.map((f) => (
-            <li
-              key={f.id}
-              className="flex items-center justify-between gap-3 rounded-md px-2 py-2 hover:bg-muted/50"
-            >
-              <Link
-                href={folderHref(f.id)}
-                prefetch
-                className="flex items-center gap-2 min-w-0 text-left flex-1 outline-none rounded-sm focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <Folder className="size-4 shrink-0 text-amber-600/80" />
-                <span className="truncate">{f.name}</span>
-              </Link>
-              {isAdmin && (
-                <div className="flex shrink-0 items-center gap-0.5">
-                  <Button
+            <li key={f.id} className="rounded-md hover:bg-muted/50">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
                     type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="size-8 text-muted-foreground"
                     disabled={busy}
-                    aria-label={`Rename ${f.name}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openRenameDialog(f);
-                    }}
+                    className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <Pencil className="size-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="size-8 text-muted-foreground hover:text-destructive"
-                    disabled={busy}
-                    aria-label={`Remove ${f.name}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPreviewFile(null);
-                      setDeleteTarget({
-                        kind: "folder",
-                        id: f.id,
-                        label: f.name,
-                      });
-                    }}
+                    <Folder className="size-4 shrink-0 text-amber-600/80" />
+                    <span className="truncate font-medium">{f.name}</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  <DropdownMenuItem
+                    onSelect={() => router.push(folderHref(f.id))}
                   >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-              )}
+                    Open folder
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => setInfoTarget({ kind: "folder", id: f.id })}
+                  >
+                    <Info className="size-4 opacity-70" />
+                    Info
+                  </DropdownMenuItem>
+                  {isAdmin ? (
+                    <>
+                      <DropdownMenuItem onSelect={() => openRenameDialog(f)}>
+                        <Pencil className="size-4 opacity-70" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onSelect={() => {
+                          setPreviewFile(null);
+                          setDeleteTarget({
+                            kind: "folder",
+                            id: f.id,
+                            label: f.name,
+                          });
+                        }}
+                      >
+                        <Trash2 className="size-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </li>
           ))}
           {files.map((file) => (
-            <li
-              key={file.id}
-              className="flex items-center justify-between gap-2 rounded-md px-2 py-2 hover:bg-muted/50"
-            >
-              <button
-                type="button"
-                className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                onClick={() => setPreviewFile(file)}
-              >
-                <FileText className="size-4 shrink-0 text-red-600/80" />
-                <span className="truncate">{file.name}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {(file.sizeBytes / 1024).toFixed(1)} KB
-                </span>
-              </button>
-              <div className="flex shrink-0 items-center gap-0.5">
-                <Button variant="ghost" size="icon" className="size-8" asChild>
-                  <a
-                    href={`/api/storage/files/${file.id}/download`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Open in new tab"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <ExternalLink className="size-4" />
-                  </a>
-                </Button>
-                {isAdmin && (
-                  <Button
+            <li key={file.id} className="rounded-md hover:bg-muted/50">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
                     type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="size-8 text-muted-foreground hover:text-destructive"
                     disabled={busy}
-                    aria-label={`Remove ${file.name}`}
-                    onClick={() =>
-                      setDeleteTarget({
-                        kind: "file",
-                        id: file.id,
-                        label: file.name,
-                      })
+                    className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <FileText className="size-4 shrink-0 text-red-600/80" />
+                    <span className="min-w-0 flex-1 truncate">{file.name}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {(file.sizeBytes / 1024).toFixed(1)} KB
+                    </span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  <DropdownMenuItem onSelect={() => setPreviewFile(file)}>
+                    Preview
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a
+                      href={`/api/storage/files/${file.id}/download`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <ExternalLink className="size-4 opacity-70" />
+                      Download
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      setInfoTarget({ kind: "file", id: file.id })
                     }
                   >
-                    <Trash2 className="size-4" />
-                  </Button>
-                )}
-              </div>
+                    <Info className="size-4 opacity-70" />
+                    Info
+                  </DropdownMenuItem>
+                  {isAdmin ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onSelect={() =>
+                          setDeleteTarget({
+                            kind: "file",
+                            id: file.id,
+                            label: file.name,
+                          })
+                        }
+                      >
+                        <Trash2 className="size-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </li>
           ))}
           {!folders.length && !files.length && (

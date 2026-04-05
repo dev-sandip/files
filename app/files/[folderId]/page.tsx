@@ -14,7 +14,7 @@ export default async function FilesFolderPage({
 
   const { folderId: raw } = await params;
   const folderId = parseFilesFolderSegment(raw);
-  if (!folderId) redirect("/files");
+  if (!folderId) redirect("/");
 
   return (
     <FileLibrary

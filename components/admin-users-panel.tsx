@@ -163,7 +163,7 @@ export function AdminUsersPanel({ currentUserId }: { currentUserId: string }) {
             Analytics
           </Link>
           <Link
-            href="/files"
+            href="/"
             className="text-sm text-muted-foreground underline-offset-2 hover:underline"
           >
             Back to files

@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 export default async function AdminUsersPage() {
   const session = await getServerSession();
   if (!session?.user) redirect("/login");
-  if (!isAdminUser(session.user)) redirect("/files");
+  if (!isAdminUser(session.user)) redirect("/");
 
   return <AdminUsersPanel currentUserId={session.user.id} />;
 }

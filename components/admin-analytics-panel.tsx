@@ -87,7 +87,7 @@ export function AdminAnalyticsPanel() {
             Users
           </Link>
           <Link
-            href="/files"
+            href="/"
             className="text-sm text-muted-foreground underline-offset-2 hover:underline"
           >
             Files

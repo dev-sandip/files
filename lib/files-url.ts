@@ -1,7 +1,7 @@
-/** Compact folder URLs: `/files/<32 hex>` (no dashes). Accepts dashed UUIDs too. */
+/** Library root is `/`. Nested folders: `/files/<32 hex>` (no dashes). Accepts dashed UUIDs too. */
 
 export function folderHref(folderId: string | null | undefined): string {
-  if (folderId == null || folderId === "") return "/files";
+  if (folderId == null || folderId === "") return "/";
   return `/files/${folderId.replace(/-/g, "").toLowerCase()}`;
 }
 
