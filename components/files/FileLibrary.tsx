@@ -41,6 +41,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -57,6 +64,7 @@ import {
   Info,
   Loader2,
   LogOut,
+  MoreHorizontal,
   Pencil,
   Trash2,
   Upload,
@@ -181,6 +189,143 @@ function FolderInfoBody({ info }: { info: StorageFolderInfo }) {
         {info.stats.subfolders === 1 ? "" : "s"}
       </DetailRow>
     </div>
+  );
+}
+
+type RowMenuVariant = "dropdown" | "context";
+
+function FolderRowActionItems({
+  variant,
+  isAdmin,
+  onOpen,
+  onInfo,
+  onRename,
+  onDelete,
+}: {
+  variant: RowMenuVariant;
+  isAdmin: boolean;
+  onOpen: () => void;
+  onInfo: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  if (variant === "dropdown") {
+    return (
+      <>
+        <DropdownMenuItem onSelect={onOpen}>Open folder</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onInfo}>
+          <Info className="size-4 opacity-70" />
+          Info
+        </DropdownMenuItem>
+        {isAdmin ? (
+          <>
+            <DropdownMenuItem onSelect={onRename}>
+              <Pencil className="size-4 opacity-70" />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+              <Trash2 className="size-4" />
+              Delete
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </>
+    );
+  }
+  return (
+    <>
+      <ContextMenuItem onSelect={onOpen}>Open folder</ContextMenuItem>
+      <ContextMenuItem onSelect={onInfo}>
+        <Info className="size-4 opacity-70" />
+        Info
+      </ContextMenuItem>
+      {isAdmin ? (
+        <>
+          <ContextMenuItem onSelect={onRename}>
+            <Pencil className="size-4 opacity-70" />
+            Rename
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem variant="destructive" onSelect={onDelete}>
+            <Trash2 className="size-4" />
+            Delete
+          </ContextMenuItem>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+function FileRowActionItems({
+  variant,
+  file,
+  isAdmin,
+  onPreview,
+  onInfo,
+  onDelete,
+}: {
+  variant: RowMenuVariant;
+  file: FileRow;
+  isAdmin: boolean;
+  onPreview: () => void;
+  onInfo: () => void;
+  onDelete: () => void;
+}) {
+  const download = `/api/storage/files/${file.id}/download`;
+  if (variant === "dropdown") {
+    return (
+      <>
+        <DropdownMenuItem onSelect={onPreview}>Preview</DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <a
+            href={download}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <ExternalLink className="size-4 opacity-70" />
+            Download
+          </a>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onInfo}>
+          <Info className="size-4 opacity-70" />
+          Info
+        </DropdownMenuItem>
+        {isAdmin ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+              <Trash2 className="size-4" />
+              Delete
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </>
+    );
+  }
+  return (
+    <>
+      <ContextMenuItem onSelect={onPreview}>Preview</ContextMenuItem>
+      <ContextMenuItem asChild>
+        <a href={download} target="_blank" rel="noopener noreferrer">
+          <ExternalLink className="size-4 opacity-70" />
+          Download
+        </a>
+      </ContextMenuItem>
+      <ContextMenuItem onSelect={onInfo}>
+        <Info className="size-4 opacity-70" />
+        Info
+      </ContextMenuItem>
+      {isAdmin ? (
+        <>
+          <ContextMenuSeparator />
+          <ContextMenuItem variant="destructive" onSelect={onDelete}>
+            <Trash2 className="size-4" />
+            Delete
+          </ContextMenuItem>
+        </>
+      ) : null}
+    </>
   );
 }
 
@@ -831,113 +976,147 @@ export function FileLibrary({
       ) : (
         <ul className="space-y-1">
           {folders.map((f) => (
-            <li key={f.id} className="rounded-md hover:bg-muted/50">
+            <li
+              key={f.id}
+              className="flex items-center gap-0.5 rounded-md pr-1 hover:bg-muted/50"
+            >
+              <ContextMenu>
+                <ContextMenuTrigger asChild>
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={folderHref(f.id)}
+                      prefetch
+                      className="flex min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <Folder className="size-4 shrink-0 text-amber-600/80" />
+                      <span className="truncate font-medium">{f.name}</span>
+                    </Link>
+                  </div>
+                </ContextMenuTrigger>
+                <ContextMenuContent className="w-52">
+                  <FolderRowActionItems
+                    variant="context"
+                    isAdmin={isAdmin}
+                    onOpen={() => router.push(folderHref(f.id))}
+                    onInfo={() => setInfoTarget({ kind: "folder", id: f.id })}
+                    onRename={() => openRenameDialog(f)}
+                    onDelete={() => {
+                      setPreviewFile(null);
+                      setDeleteTarget({
+                        kind: "folder",
+                        id: f.id,
+                        label: f.name,
+                      });
+                    }}
+                  />
+                </ContextMenuContent>
+              </ContextMenu>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
                     disabled={busy}
-                    className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="size-8 shrink-0 text-muted-foreground"
+                    aria-label={`Actions for folder ${f.name}`}
                   >
-                    <Folder className="size-4 shrink-0 text-amber-600/80" />
-                    <span className="truncate font-medium">{f.name}</span>
-                  </button>
+                    <MoreHorizontal className="size-4" />
+                  </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-52">
-                  <DropdownMenuItem
-                    onSelect={() => router.push(folderHref(f.id))}
-                  >
-                    Open folder
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => setInfoTarget({ kind: "folder", id: f.id })}
-                  >
-                    <Info className="size-4 opacity-70" />
-                    Info
-                  </DropdownMenuItem>
-                  {isAdmin ? (
-                    <>
-                      <DropdownMenuItem onSelect={() => openRenameDialog(f)}>
-                        <Pencil className="size-4 opacity-70" />
-                        Rename
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onSelect={() => {
-                          setPreviewFile(null);
-                          setDeleteTarget({
-                            kind: "folder",
-                            id: f.id,
-                            label: f.name,
-                          });
-                        }}
-                      >
-                        <Trash2 className="size-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </>
-                  ) : null}
+                <DropdownMenuContent align="end" className="w-52">
+                  <FolderRowActionItems
+                    variant="dropdown"
+                    isAdmin={isAdmin}
+                    onOpen={() => router.push(folderHref(f.id))}
+                    onInfo={() => setInfoTarget({ kind: "folder", id: f.id })}
+                    onRename={() => openRenameDialog(f)}
+                    onDelete={() => {
+                      setPreviewFile(null);
+                      setDeleteTarget({
+                        kind: "folder",
+                        id: f.id,
+                        label: f.name,
+                      });
+                    }}
+                  />
                 </DropdownMenuContent>
               </DropdownMenu>
             </li>
           ))}
           {files.map((file) => (
-            <li key={file.id} className="rounded-md hover:bg-muted/50">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <FileText className="size-4 shrink-0 text-red-600/80" />
-                    <span className="min-w-0 flex-1 truncate">{file.name}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {(file.sizeBytes / 1024).toFixed(1)} KB
-                    </span>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-52">
-                  <DropdownMenuItem onSelect={() => setPreviewFile(file)}>
-                    Preview
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <a
-                      href={`/api/storage/files/${file.id}/download`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+            <li
+              key={file.id}
+              className="flex items-center gap-0.5 rounded-md pr-1 hover:bg-muted/50"
+            >
+              <ContextMenu>
+                <ContextMenuTrigger asChild>
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setPreviewFile(file)}
+                      className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      <ExternalLink className="size-4 opacity-70" />
-                      Download
-                    </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() =>
+                      <FileText className="size-4 shrink-0 text-red-600/80" />
+                      <span className="min-w-0 flex-1 truncate">
+                        {file.name}
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {(file.sizeBytes / 1024).toFixed(1)} KB
+                      </span>
+                    </button>
+                  </div>
+                </ContextMenuTrigger>
+                <ContextMenuContent className="w-52">
+                  <FileRowActionItems
+                    variant="context"
+                    file={file}
+                    isAdmin={isAdmin}
+                    onPreview={() => setPreviewFile(file)}
+                    onInfo={() =>
                       setInfoTarget({ kind: "file", id: file.id })
                     }
+                    onDelete={() =>
+                      setDeleteTarget({
+                        kind: "file",
+                        id: file.id,
+                        label: file.name,
+                      })
+                    }
+                  />
+                </ContextMenuContent>
+              </ContextMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={busy}
+                    className="size-8 shrink-0 text-muted-foreground"
+                    aria-label={`Actions for file ${file.name}`}
                   >
-                    <Info className="size-4 opacity-70" />
-                    Info
-                  </DropdownMenuItem>
-                  {isAdmin ? (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onSelect={() =>
-                          setDeleteTarget({
-                            kind: "file",
-                            id: file.id,
-                            label: file.name,
-                          })
-                        }
-                      >
-                        <Trash2 className="size-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </>
-                  ) : null}
+                    <MoreHorizontal className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <FileRowActionItems
+                    variant="dropdown"
+                    file={file}
+                    isAdmin={isAdmin}
+                    onPreview={() => setPreviewFile(file)}
+                    onInfo={() =>
+                      setInfoTarget({ kind: "file", id: file.id })
+                    }
+                    onDelete={() =>
+                      setDeleteTarget({
+                        kind: "file",
+                        id: file.id,
+                        label: file.name,
+                      })
+                    }
+                  />
                 </DropdownMenuContent>
               </DropdownMenu>
             </li>
