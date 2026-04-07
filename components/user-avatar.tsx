@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 
 function resolveAvatarSrc(
   image: string | null | undefined,
-  userId: string | undefined,
+  userId: string | undefined
 ): string | null {
   if (!image?.trim()) return null;
 
@@ -35,7 +35,6 @@ export function UserAvatar({
 }: {
   name: string;
   image?: string | null;
-  /** Required for uploaded avatars (S3 key or legacy public URL). */
   userId?: string;
   className?: string;
   size?: number;
@@ -44,11 +43,9 @@ export function UserAvatar({
   const initial = name?.trim()?.charAt(0)?.toUpperCase() ?? "?";
   const dim = { width: size, height: size, minWidth: size, minHeight: size };
 
-  const src = useMemo(
-    () => resolveAvatarSrc(image, userId),
-    [image, userId],
-  );
+  const src = useMemo(() => resolveAvatarSrc(image, userId), [image, userId]);
 
+  // Reset broken state when src changes
   useEffect(() => {
     setBroken(false);
   }, [src]);
@@ -58,7 +55,7 @@ export function UserAvatar({
       <Image
         key={src}
         src={src}
-        alt=""
+        alt={name}
         width={size}
         height={size}
         className={cn("rounded-full object-cover bg-muted", className)}
@@ -72,10 +69,10 @@ export function UserAvatar({
     <span
       className={cn(
         "rounded-full bg-muted flex items-center justify-center text-muted-foreground text-sm font-medium",
-        className,
+        className
       )}
       style={dim}
-      aria-hidden
+      aria-hidden="true"
     >
       {initial}
     </span>
