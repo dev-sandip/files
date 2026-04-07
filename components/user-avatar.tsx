@@ -61,6 +61,7 @@ export function UserAvatar({
         className={cn("rounded-full object-cover bg-muted", className)}
         style={dim}
         onError={() => setBroken(true)}
+        unoptimized={src?.startsWith("/api/avatar")}
       />
     );
   }
